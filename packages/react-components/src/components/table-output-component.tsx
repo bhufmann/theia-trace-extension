@@ -2,12 +2,16 @@
 import { AbstractOutputComponent, AbstractOutputProps, AbstractOutputState } from './abstract-output-component';
 import * as React from 'react';
 import { AgGridReact } from 'ag-grid-react';
-import { ColDef, IDatasource, GridReadyEvent, CellClickedEvent, GridApi, ColumnApi, Column, RowNode } from 'ag-grid-community';
+import { ColDef, IDatasource, GridReadyEvent, CellClickedEvent, GridApi, ColumnApi, TextFilter, ModelUpdatedEvent
+    , FilterChangedEvent, FilterModifiedEvent, IDoesFilterPassParams, Column, RowNode } from 'ag-grid-community';
 import { QueryHelper } from 'tsp-typescript-client/lib/models/query/query-helper';
 import { cloneDeep } from 'lodash';
 import { signalManager } from '@trace-viewer/base/lib/signals/signal-manager';
 import { TimelineChart } from 'timeline-chart/lib/time-graph-model';
 import { CellKeyDownEvent } from 'ag-grid-community/dist/lib/events';
+import { defaultRowRenderer } from 'react-virtualized/dist/es/Table';
+import { ITextFilterParams } from 'ag-grid-community/dist/lib/filter/textFilter';
+import { Line } from 'tsp-typescript-client/lib/models/table';
 
 type TableOuputState = AbstractOutputState & {
     tableColumns: ColDef[];
@@ -41,6 +45,8 @@ export class TableOutputComponent extends AbstractOutputComponent<TableOutputPro
     private enableIndexSelection = true;
     private selectStartIndex = -1;
     private selectEndIndex = -1;
+    private lastLines: Array<any> = new Array<any>();
+    private searching = false;
 
     static defaultProps: Partial<TableOutputProps> = {
         cacheBlockSize: 200,
@@ -67,6 +73,8 @@ export class TableOutputComponent extends AbstractOutputComponent<TableOutputPro
         this.onEventClick = this.onEventClick.bind(this);
         this.onModelUpdated = this.onModelUpdated.bind(this);
         this.onKeyDown = this.onKeyDown.bind(this);
+        this.onFilterChanged = this.onFilterChanged.bind(this);
+        this.onFilterModified = this.onFilterModified.bind(this);
     }
 
     renderMainArea(): React.ReactNode {
@@ -86,6 +94,13 @@ export class TableOutputComponent extends AbstractOutputComponent<TableOutputPro
                 rowSelection='multiple'
                 onModelUpdated={this.onModelUpdated}
                 onCellKeyDown={this.onKeyDown}
+                enableCellTextSelection={true}
+                onFilterChanged={this.onFilterChanged}
+                onFilterModified={this.onFilterModified}
+                frameworkComponents={{
+                    columnFilter: ColumnFilter
+                  }}
+                floatingFilter={true}
             >
             </AgGridReact>
         </div>;
@@ -149,6 +164,8 @@ export class TableOutputComponent extends AbstractOutputComponent<TableOutputPro
 
     private fetchItemProperties(columns: Column[], data: any) {
         const itemPropsObj: { [key: string]: string } = {};
+
+        const tooltipObj: { [key: string]: string } = {};
         columns.forEach(column => {
             const headerName = column.getColDef().headerName;
             const colField = column.getColDef().field;
@@ -249,6 +266,11 @@ export class TableOutputComponent extends AbstractOutputComponent<TableOutputPro
     }
 
     private async fetchTableLines(fetchIndex: number, linesToFetch: number) {
+
+        if (this.searching) {
+            return this.lastLines;
+        }
+
         const traceUUID = this.props.traceId;
         const tspClient = this.props.tspClient;
         const outputId = this.props.outputDescriptor.id;
@@ -256,6 +278,80 @@ export class TableOutputComponent extends AbstractOutputComponent<TableOutputPro
         const tspClientResponse = await tspClient.fetchTableLines(traceUUID, outputId, QueryHelper.tableQuery(this.columnIds, fetchIndex, linesToFetch));
         const lineResponse = tspClientResponse.getModel();
         const linesArray = new Array<any>();
+        if (!tspClientResponse.isOk() || !lineResponse) {
+            return linesArray;
+        }
+        const model = lineResponse.model;
+        const lines =  model.lines;
+        lines.forEach(line => {
+            const obj: any = {};
+            const cells = line.cells;
+            const ids = model.columnIds;
+
+            if (this.showIndexColumn) {
+                obj[0] = line.index.toString();
+            }
+
+            for (let i = 0; i < cells.length; i++) {
+                const id = this.showIndexColumn ? ids[i] + 1 : ids[i];
+                obj[id] = cells[i].content;
+            }
+            linesArray.push(obj);
+        });
+        return linesArray;
+    }
+
+    private async fetchSearchTableLines(fetchIndex: number, linesToFetch: number, filter?: any, filterModel?: { [key: string]: any }) {
+        const traceUUID = this.props.traceId;
+        const tspClient = this.props.tspClient;
+        const outputId = this.props.outputDescriptor.id;
+
+        let additionalProperties = undefined;
+        if (filter) {
+            if (filter === 'search' && filterModel ) {
+                const myFilters: { [k: number]: string } = {};
+                Object.entries(filterModel).forEach(([myKey, value]) => {
+                    const k: number = Number.parseInt(myKey);
+                    myFilters[k] = value['filter'];
+                });
+                additionalProperties = {
+                    ['table_search_expressions']: myFilters
+                };
+
+                // additionalProperties = {
+                //     ['table_search_simple_expressions']: { [4]: 'sched_switch', [5]: '25' }
+                // };
+            }
+            // complex API
+            // else if (filter === 'complex' && filterModel) {
+            //     const myFilters: string[] = [];
+            //     let headerName: string | undefined;
+            //     Object.entries(filterModel).forEach(([myKey, value]) => {
+            //         const columns = this.columnApi?.getAllColumns();
+            //         if (columns) {
+            //             columns.forEach(column => {
+            //                 if (column.getColDef().field === myKey) {
+            //                     headerName = column.getColDef().headerName;
+            //                 }
+            //             });
+            //         }
+            //         console.log('filter type: ' + value['type']);
+            //         if (headerName && value['type'] === 'contains') {
+                           // FIXME: use map<columnId, expression) instead
+            //             myFilters.push(headerName + ' contains ' + value['filter']);
+            //         }
+            //     });
+            //     if (myFilters.length > 0) {
+            //         additionalProperties = {
+            //             ['table_search_simple_expressions']: myFilters
+            //         };
+            //     }
+            // }
+        }
+
+        const tspClientResponse = await tspClient.fetchTableLines(traceUUID, outputId, QueryHelper.tableQuery(this.columnIds, fetchIndex, linesToFetch, additionalProperties));
+        const lineResponse = tspClientResponse.getModel();
+        const linesArray = new Array<Line>();
         if (!tspClientResponse.isOk() || !lineResponse) {
             return linesArray;
         }
@@ -274,10 +370,11 @@ export class TableOutputComponent extends AbstractOutputComponent<TableOutputPro
                 const id = this.showIndexColumn ? ids[i] + 1 : ids[i];
                 obj[id] = cells[i].content;
             }
+            obj['flag'] = (line.tags !== undefined && line.tags > 0);
             linesArray.push(obj);
         });
-
         return linesArray;
+        // return lines;
     }
 
     private onGridReady = async (event: GridReadyEvent) => {
@@ -289,12 +386,13 @@ export class TableOutputComponent extends AbstractOutputComponent<TableOutputPro
                     this.fetchColumns = false;
                     await this.init();
                 }
-                const rowsThisPage = await this.fetchTableLines(params.startRow, params.endRow - params.startRow);
+                const rowsThisPage = await this.fetchSearchTableLines(params.startRow, params.endRow - params.startRow, 'search', params.filterModel);
                 for (let i = 0; i < rowsThisPage.length; i++) {
                     const item = rowsThisPage[i];
                     const itemCopy = cloneDeep(item);
                     rowsThisPage[i] = itemCopy;
                 }
+                this.lastLines = rowsThisPage;
                 params.successCallback(rowsThisPage, this.props.nbEvents);
             }
         };
@@ -326,12 +424,48 @@ export class TableOutputComponent extends AbstractOutputComponent<TableOutputPro
             const columnEntries = columnsResponse.model;
             columnEntries.forEach(columnHeader => {
                 const id = this.showIndexColumn ? ++columnHeader.id : columnHeader.id;
+                // const myCellRenderer = (id === 2 ?
+                // (params: { value: string; }) => `<span style="color:#66CC66">${params.value}</span>` :
+                // (params: { value: string; }) => `${params.value}`);
+                const myCellRenderer =
+                    // eslint-disable-next-line @typescript-eslint/ban-types
+                    (params: { value: any, data: { [x: string]: boolean; }}) => {
+                        if (params.data['flag'] === true) {
+                            // #808080
+                            return `<span style="color:#66CC66">${params.value}</span>`;
+                        } else {
+                            return `${params.value}`;
+                        }
+                    };
+
                 colIds.push(id);
+                let filter = 'agTextColumnFilter';
+                if (columnHeader.name === 'Timestamp ns') {
+                    filter = 'agNumberColumnFilter';
+                }
                 columnsArray.push({
                     headerName: columnHeader.name,
                     field: columnHeader.id.toString(),
                     width: this.props.columnWidth,
-                    resizable: true
+                    resizable: true,
+                    filter: filter,
+                    cellRenderer: myCellRenderer,
+                    suppressMenu: true,
+/*
+                    filterParams: {
+                        filterOptions: [
+                          {
+                             displayKey: 'matches',
+                             displayName: 'Matches',
+                           },
+                           'contains',
+                           'equals',
+                           'matches',
+                           'not equals',
+                           'greater than'
+                           ]
+                        }
+*/
                 });
             });
         }
@@ -420,9 +554,9 @@ export class TableOutputComponent extends AbstractOutputComponent<TableOutputPro
         return lines[0].index;
     }
 
-    private onModelUpdated = async () => {
+    private onModelUpdated = async (event: ModelUpdatedEvent) => {
+        console.log(event.type);
         this.selectRows();
-
         if (this.columnArray.length > 0 && !this.columnsPacked && this.columnApi) {
             this.columnApi.autoSizeAllColumns();
             this.columnsPacked = true;
@@ -447,5 +581,61 @@ export class TableOutputComponent extends AbstractOutputComponent<TableOutputPro
                 }
             });
         }
+    }
+    private onFilterChanged = async (event: FilterChangedEvent) => {
+        if (!this.searching) {
+            this.searching = true;
+            const foundRows = await this.fetchSearchTableLines(0, 1, 'search', event.api.getFilterModel());
+            if (foundRows.length > 0) {
+                console.log(foundRows[0].index);
+            }
+            // TODO ensure visible of the index
+            this.searching = false;
+        }
+        console.log('onFilterUpdated ' + event.type);
+    };
+
+    private onFilterModified = async (event: FilterModifiedEvent) => {
+        console.log('onFilterModified ' + event.type);
+    };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
+interface ColumnFilterProps {
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+}
+
+class ColumnFilter extends React.Component<ColumnFilterProps>{
+    constructor(props: ColumnFilterProps) {
+        super(props);
+
+        this.state = {
+            year: 'All'
+        };
+    }
+
+    isFilterActive(): boolean {
+        return true;
+    }
+
+    doesFilterPass(params: IDoesFilterPassParams) {
+        return params.data.year >= 2010;
+    }
+    getModel(): any {
+        //
+    }
+
+    setModel(): void {
+        //
+    }
+
+    render(): JSX.Element {
+        return <div onChange={this.props.onChange}>
+            <input
+                id="input-filter-tree"
+                type="text"
+                placeholder="Filter"
+            />
+        </div>;
     }
 }
