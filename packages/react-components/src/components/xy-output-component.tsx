@@ -3,6 +3,7 @@ import { AbstractOutputProps, AbstractOutputState } from './abstract-output-comp
 import { AbstractTreeOutputComponent } from './abstract-tree-output-component';
 import * as React from 'react';
 import { Line } from 'react-chartjs-2';
+import {Scatter} from 'react-chartjs-2';
 import { QueryHelper } from 'tsp-typescript-client/lib/models/query/query-helper';
 import { Entry } from 'tsp-typescript-client/lib/models/entry';
 import { ResponseStatus } from 'tsp-typescript-client/lib/models/response/responses';
@@ -13,6 +14,7 @@ import { getAllExpandedNodeIds } from './utils/filtrer-tree/utils';
 import { TreeNode } from './utils/filtrer-tree/tree-node';
 import ColumnHeader from './utils/filtrer-tree/column-header';
 import { BIMath } from 'timeline-chart/lib/bigint-utils';
+import { ChangeEvent } from 'react';
 
 type XYOuputState = AbstractOutputState & {
     selectedSeriesId: number[];
@@ -20,6 +22,7 @@ type XYOuputState = AbstractOutputState & {
     checkedSeries: number[];
     collapsedNodes: number[];
     orderedNodes: number[];
+    chartStyle: any;
     // FIXME Type this properly
     xyData: any;
     columns: ColumnHeader[];
@@ -30,11 +33,21 @@ const ZOOM_OUT = false;
 const PAN_LEFT = true;
 const PAN_RIGHT = false;
 
+class xyPair {
+    x: number;
+    y: number;
+    constructor(x: number, y: number) {
+        this.x = x;
+        this.y = y;
+      }
+}
+
 export class XYOutputComponent extends AbstractTreeOutputComponent<AbstractOutputProps, XYOuputState> {
     private currentColorIndex = 0;
     private colorMap: Map<string, number> = new Map();
-    private lineChartRef: any;
+    protected desiredChartStyle: any;
     private chartRef: any;
+    private divRef: any;
     private mouseIsDown = false;
     private positionXMove = 0;
     private isRightClick = false;
@@ -58,6 +71,7 @@ export class XYOutputComponent extends AbstractTreeOutputComponent<AbstractOutpu
     constructor(props: AbstractOutputProps) {
         super(props);
         this.state = {
+            chartStyle: 'line',
             outputStatus: ResponseStatus.RUNNING,
             selectedSeriesId: [],
             xyTree: [],
@@ -69,8 +83,8 @@ export class XYOutputComponent extends AbstractTreeOutputComponent<AbstractOutpu
         };
 
         this.afterChartDraw = this.afterChartDraw.bind(this);
-        this.lineChartRef = React.createRef();
         this.chartRef = React.createRef();
+        this.divRef = React.createRef();
     }
 
     componentDidMount(): void {
@@ -117,27 +131,49 @@ export class XYOutputComponent extends AbstractTreeOutputComponent<AbstractOutpu
         if (needToUpdate || prevState.outputStatus === ResponseStatus.RUNNING) {
             this.updateXY();
         }
-        if (this.lineChartRef.current) {
+        if (this.chartRef.current) {
             if (this.preventDefaultHandler === undefined) {
                 this.preventDefaultHandler = (event: WheelEvent) => {
                     if (event.ctrlKey) {
                         event.preventDefault();
                     }
                 };
-                this.chartRef.current.addEventListener('wheel', this.preventDefaultHandler);
+                this.divRef.current.addEventListener('wheel', this.preventDefaultHandler);
             }
-            this.lineChartRef.current.chartInstance.render();
+            this.chartRef.current.chartInstance.render();
         }
     }
 
     synchronizeTreeScroll(): void { /* Nothing to do by default */ }
+
+    changeChartStyle(e: ChangeEvent<HTMLSelectElement>): void {
+        const value = e.target.value.toString();
+        this.desiredChartStyle = value;
+        this.updateXY()
+            .then(() => {
+                this.setState({chartStyle:value});
+            });
+      }
 
     renderTree(): React.ReactNode | undefined {
         this.onToggleCheck = this.onToggleCheck.bind(this);
         this.onToggleCollapse = this.onToggleCollapse.bind(this);
         this.onOrderChange = this.onOrderChange.bind(this);
         return this.state.xyTree.length
-            ? <EntryTree
+            ? <>
+            <select
+            className="theia-select"
+            value={this.state.chartStyle}
+            onChange={
+                e => this.changeChartStyle(e)
+            }
+            id="xy-dropdown"
+            >
+                <option value="line">Line</option>
+                <option value="scatter">Scatter</option>
+                <option value="area">Stacked Area</option>
+            </select>
+            <EntryTree
                 entries={this.state.xyTree}
                 showCheckboxes={true}
                 collapsedNodes={this.state.collapsedNodes}
@@ -147,16 +183,20 @@ export class XYOutputComponent extends AbstractTreeOutputComponent<AbstractOutpu
                 onOrderChange={this.onOrderChange}
                 headers={this.state.columns}
             />
+            </>
             : undefined
             ;
     }
 
-    renderChart(): React.ReactNode {
+    chooseChart(): JSX.Element {
+
         const lineOptions: Chart.ChartOptions = {
             responsive: true,
             elements: {
                 point: { radius: 0 },
-                line: { tension: 0 }
+                line: { tension: 0,
+                        borderWidth: 2
+                    }
             },
             maintainAspectRatio: false,
             legend: { display: false },
@@ -170,11 +210,112 @@ export class XYOutputComponent extends AbstractTreeOutputComponent<AbstractOutpu
             },
             scales: {
                 xAxes: [{ id: 'time-axis', display: false }],
-                yAxes: [{ display: false }]
+                yAxes: [{
+                    display: false,
+                    stacked: false
+                    }]
             },
             animation: { duration: 0 },
             events: [ 'mousedown' ],
         };
+
+        const areaOptions: Chart.ChartOptions = {
+              responsive: true,
+              elements: {
+                point: { radius: 0 },
+                line: { tension: 0,
+                        borderWidth: 0
+                }
+              },
+              maintainAspectRatio: false,
+              legend: { display: false },
+              layout: {
+                padding: {
+                    left: 0,
+                    right: 0,
+                    top: 15,
+                    bottom: 5
+                }
+              },
+              scales: {
+                xAxes: [{
+                    id: 'time-axis',
+                    display: false
+                }],
+                yAxes: [{
+                  stacked: true,
+                  display: false
+                }]
+              },
+              animation: { duration: 0 },
+              events: [ 'mousedown' ],
+            };
+
+        const scatterOptions: Chart.ChartOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            legend: { display: false },
+            layout: {
+                padding: {
+                    left: 0,
+                    right: 0,
+                    top: 15,
+                    bottom: 5
+                }
+              },
+            scales: {
+              xAxes: [{
+                  id: 'time-axis',
+                  display: false,
+                  ticks: {
+                    min: Number(this.props.viewRange?.getStart()), // TODO fix Nanosecond precision
+                    max: Number(this.props.viewRange?.getEnd()) // TODO fix Nanosecond precision
+                  }
+                }],
+              yAxes: [
+                {
+                  display: false,
+                },
+              ],
+            },
+            animation: { duration: 0 },
+            events: [ 'mousedown' ]
+          };
+
+          switch (this.state.chartStyle) {
+            case 'scatter':
+                return <Scatter
+                    data={this.state.xyData}
+                    height={parseInt(this.props.style.height.toString())}
+                    options={scatterOptions}
+                    ref={this.chartRef}
+                    plugins={[this.plugin]}
+                    >
+                    </Scatter>;
+            case 'area':
+                return <Line
+                    data={this.state.xyData}
+                    height={parseInt(this.props.style.height.toString())}
+                    options={areaOptions}
+                    ref={this.chartRef}
+                    plugins={[this.plugin]}
+                    >
+                    </Line>;
+            case 'line':
+            default:
+                return <Line
+                    data={this.state.xyData}
+                    height={parseInt(this.props.style.height.toString())}
+                    options={lineOptions}
+                    ref={this.chartRef}
+                    plugins={[this.plugin]}
+                    >
+                    </Line>;
+          }
+
+    }
+
+    renderChart(): React.ReactNode {
         // width={this.props.style.chartWidth}
         if (this.state.outputStatus === ResponseStatus.COMPLETED && this.state.xyTree.length === 0 ) {
             return <React.Fragment>
@@ -197,15 +338,9 @@ export class XYOutputComponent extends AbstractTreeOutputComponent<AbstractOutpu
                     onMouseLeave={event => this.onMouseLeave(event)}
                     onMouseDown={event => this.onMouseDown(event)}
                     style={{ height: this.props.style.height }}
-                    ref={this.chartRef}
+                    ref={this.divRef}
                     >
-                    <Line
-                        data={this.state.xyData}
-                        height={parseInt(this.props.style.height.toString())}
-                        options={lineOptions}
-                        ref={this.lineChartRef}
-                        plugins={[this.plugin]}>
-                    </Line>
+                    {this.chooseChart()}
                 </div> :
                 <div className='analysis-running'>
                 {(
@@ -396,23 +531,23 @@ export class XYOutputComponent extends AbstractTreeOutputComponent<AbstractOutpu
     }
 
     private getTimeForX(x: number): bigint {
-        if (!this.lineChartRef.current?.chartInstance) {
+        if (!this.chartRef.current?.chartInstance) {
             return BigInt(0);
         }
         const offset = this.props.viewRange.getOffset() ?? BigInt(0);
         const duration = this.props.viewRange.getDuration();
         const time = this.props.viewRange.getStart() - offset +
-            BIMath.round(x / this.lineChartRef.current.chartInstance.width * Number(duration));
+            BIMath.round(x / this.chartRef.current.chartInstance.width * Number(duration));
         return time;
     }
 
     protected getXForTime(time: bigint): number {
-        if (!this.lineChartRef.current?.chartInstance) {
+        if (!this.chartRef.current?.chartInstance) {
             return 0;
         }
         const start = this.props.viewRange.getStart();
         const duration = this.props.viewRange.getDuration();
-        const x = Number(time - start) / Number(duration) * this.lineChartRef.current.chartInstance.width;
+        const x = Number(time - start) / Number(duration) * this.chartRef.current.chartInstance.width;
         return x;
     }
 
@@ -439,7 +574,7 @@ export class XYOutputComponent extends AbstractTreeOutputComponent<AbstractOutpu
 
     private onMouseLeave(event: React.MouseEvent) {
         this.isMouseLeave = true;
-        this.positionXMove = Math.max(0, Math.min(event.nativeEvent.offsetX, this.lineChartRef.current.chartInstance.width));
+        this.positionXMove = Math.max(0, Math.min(event.nativeEvent.offsetX, this.chartRef.current.chartInstance.width));
         this.forceUpdate();
         if (this.mouseIsDown && !this.isRightClick) {
             this.updateSelection();
@@ -505,11 +640,56 @@ export class XYOutputComponent extends AbstractTreeOutputComponent<AbstractOutpu
         const tspClientResponse = await this.props.tspClient.fetchXY(this.props.traceId, this.props.outputDescriptor.id, xyDataParameters);
         const xyDataResponse = tspClientResponse.getModel();
         if (tspClientResponse.isOk() && xyDataResponse) {
-            this.buildXYData(xyDataResponse.model.series);
+            switch (this.desiredChartStyle) {
+                case 'scatter':
+                    this.buildScatterData(xyDataResponse.model.series);
+                    break;
+                case 'area':
+                    this.buildAreaData(xyDataResponse.model.series);
+                    break;
+                case 'line':
+                    this.buildLineData(xyDataResponse.model.series);
+                    break;
+                default:
+                    this.buildLineData(xyDataResponse.model.series);
+                    break;
+            }
         }
     }
 
-    private buildXYData(seriesObj: XYSeries[]) {
+    private buildScatterData(seriesObj: XYSeries[]) {
+        const dataSetArray = new Array<any>();
+        let xValues: number[] = [];
+        let yValues: number[] = [];
+        let pairs: xyPair[] = [];
+        seriesObj.forEach(series => {
+            const color = this.getSeriesColor(series.seriesName);
+            xValues = series.xValues;
+            yValues = series.yValues;
+
+            xValues.forEach((value, index) => {
+                pairs.push(new xyPair(Number(value), yValues[index])); // TODO fix Nanosecond precision
+            });
+
+            dataSetArray.push({
+                label: series.seriesName,
+                data: pairs,
+                backgroundColor: color,
+                borderColor: color,
+            });
+            pairs = [];
+        });
+        const scatterData = {
+            labels: xValues,
+            datasets: dataSetArray
+        };
+
+        this.setState({
+            xyData: scatterData
+        });
+    }
+
+    private buildAreaData(seriesObj: XYSeries[]) {
         const dataSetArray = new Array<any>();
         let xValues: number[] = [];
         seriesObj.forEach(series => {
@@ -517,9 +697,34 @@ export class XYOutputComponent extends AbstractTreeOutputComponent<AbstractOutpu
             xValues = series.xValues;
             dataSetArray.push({
                 label: series.seriesName,
+                fill: 'start',
+                backgroundColor: color,
+                data: series.yValues
+            });
+        });
+        dataSetArray.shift();
+        const areaData = {
+            labels: xValues,
+            datasets: dataSetArray
+        };
+
+        this.setState({
+            xyData: areaData
+        });
+    }
+
+    private buildLineData(seriesObj: XYSeries[]) {
+        const dataSetArray = new Array<any>();
+        let xValues: number[] = [];
+
+        seriesObj.forEach(series => {
+            const color = this.getSeriesColor(series.seriesName);
+            series.xValues.forEach(x => xValues.push(Number(x))); // TODO fix Nanosecond precision
+            xValues = series.xValues;
+            dataSetArray.push({
+                label: series.seriesName,
                 fill: false,
                 borderColor: color,
-                borderWidth: 2,
                 data: series.yValues
             });
         });
