@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { TimeGraphComponent } from 'timeline-chart/lib/components/time-graph-component';
-import { TimeGraphStateComponent, TimeGraphStateStyle } from 'timeline-chart/lib/components/time-graph-state';
+import { TimeGraphStateComponent } from 'timeline-chart/lib/components/time-graph-state';
 import { TimeGraphChart, TimeGraphChartProviders } from 'timeline-chart/lib/layer/time-graph-chart';
 import { TimeGraphChartArrows } from 'timeline-chart/lib/layer/time-graph-chart-arrows';
 import { TimeGraphRangeEventsLayer } from 'timeline-chart/lib/layer/time-graph-range-events-layer';
@@ -60,7 +60,7 @@ export class TimegraphOutputComponent extends AbstractTreeOutputComponent<Timegr
 
     private tspDataProvider: TspDataProvider;
     private styleProvider: StyleProvider;
-    private styleMap = new Map<string, TimeGraphStateStyle>();
+    private styleMap = new Map<string, number>();
 
     private selectedElement: TimeGraphStateComponent | undefined;
     private selectedMarkerCategories: string[] | undefined = undefined;
@@ -673,13 +673,16 @@ export class TimegraphOutputComponent extends AbstractTreeOutputComponent<Timegr
 
     private getStateStyle(state: TimelineChart.TimeGraphState) {
         const styleModel = this.state.styleModel;
+        let height = this.props.style.rowHeight * 0.8;
         if (styleModel) {
             const metadata = state.data;
             if (metadata && metadata.style) {
                 const elementStyle: OutputElementStyle = metadata.style;
-                const backgroundColor = this.styleProvider.getColorStyle(elementStyle, StyleProperties.BACKGROUND_COLOR);
+                let backgroundColor = this.styleProvider.getColorStyle(elementStyle, StyleProperties.BACKGROUND_COLOR);
+                if (backgroundColor === undefined) {
+                    backgroundColor = { color: this.getDefaultColor(state), alpha : 1.0};
+                }
                 const heightFactor = this.styleProvider.getNumberStyle(elementStyle, StyleProperties.HEIGHT);
-                let height = this.props.style.rowHeight * 0.8;
                 if (heightFactor) {
                     height = heightFactor * height;
                 }
@@ -706,86 +709,44 @@ export class TimegraphOutputComponent extends AbstractTreeOutputComponent<Timegr
             }
             return undefined;
         }
-        return this.getDefaultStateStyle(state);
+        return {
+            color: this.getDefaultColor(state),
+            opacity: 1.0,
+            height: height,
+            borderWidth: state.selected ? 2 : 1,
+            borderColor: state.selected ? 0xeef20c : 0x000000
+        };
     }
 
-    private getDefaultStateStyle(state: TimelineChart.TimeGraphState) {
-        const styleProvider = new StyleProvider(this.props.outputDescriptor.id, this.props.traceId, this.props.tspClient);
-        const styles = styleProvider.getStylesTmp();
-        const backupStyles: TimeGraphStateStyle[] = [
-            {
-                color: 0x3891A6,
-                height: this.props.style.rowHeight * 0.8
-            }, {
-                color: 0x4C5B5C,
-                height: this.props.style.rowHeight * 0.7
-            }, {
-                color: 0xFDE74C,
-                height: this.props.style.rowHeight * 0.6
-            }, {
-                color: 0xDB5461,
-                height: this.props.style.rowHeight * 0.5
-            }, {
-                color: 0xE3655B,
-                height: this.props.style.rowHeight * 0.4
-            }, {
-                color: 0xEA8F87,
-                height: this.props.style.rowHeight * 0.9
-            }, {
-                color: 0xDE636F,
-                height: this.props.style.rowHeight * 0.3
-            },
+    private getDefaultColor(state: TimelineChart.TimeGraphState): number {
+        const backupStyles: number[] = [
+            0x3891A6, 0x4C5B5C, 0xFDE74C, 0xDB5461, 0xE3655B, 0xEA8F87,0xDE636F
         ];
-
-        let style: TimeGraphStateStyle | undefined = backupStyles[0];
+        let color: number | undefined = backupStyles[0];
         const val = state.label ?? '';
         const modelData = state.data;
         if (modelData) {
             const outputStyle = modelData.style;
             if (!outputStyle) {
-                return {
-                    color: 0xCACACA,
-                    height: this.props.style.rowHeight * 0.5,
-                    borderWidth: state.selected ? 2 : 0,
-                    borderColor: 0xeef20c
-                };
+                return 0xCACACA;
             }
 
             const stateStyle = outputStyle as OutputElementStyle;
-            const elementStyle = styles[stateStyle.parentKey];
-            if (elementStyle) {
-                return {
-                    color: parseInt(elementStyle.color, 16),
-                    height: this.props.style.rowHeight * elementStyle.height,
-                    borderWidth: state.selected ? 2 : 0,
-                    borderColor: 0xeef20c
-                };
-            }
 
-            style = this.styleMap.get(stateStyle.parentKey);
-            if (style === undefined) {
-                style = backupStyles[(Math.abs(hash(stateStyle.parentKey)) as number % backupStyles.length)];
-                this.styleMap.set(stateStyle.parentKey, style);
+            color = this.styleMap.get(stateStyle.parentKey);
+            if (color === undefined) {
+                color = backupStyles[(Math.abs(hash(stateStyle.parentKey)) as number % backupStyles.length)];
+                this.styleMap.set(stateStyle.parentKey, color);
             }
-            return {
-                color: style.color,
-                height: style.height,
-                borderWidth: state.selected ? 2 : 0,
-                borderColor: 0xeef20c
-            };
+            return  color;
         }
 
-        style = this.styleMap.get(val);
-        if (!style) {
-            style = backupStyles[(this.styleMap.size % backupStyles.length)];
-            this.styleMap.set(val, style);
+        color = this.styleMap.get(val);
+        if (!color) {
+            color = backupStyles[(this.styleMap.size % backupStyles.length)];
+            this.styleMap.set(val, color);
         }
-        return {
-            color: style.color,
-            height: style.height,
-            borderWidth: state.selected ? 2 : 0,
-            borderColor: 0xeef20c
-        };
+        return color;
     }
 
     private getAnnotationStyle(annotation: TimelineChart.TimeGraphAnnotation) {

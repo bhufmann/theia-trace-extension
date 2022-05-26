@@ -9,75 +9,12 @@ export class StyleProvider {
     private traceId: string;
     private outputId: string;
 
-    private tmpStyleObject: { [key: string]: { [key: string]: { [key: string]: any } } };
-
     private styleModel: OutputStyleModel | undefined;
 
     constructor(outputId: string, traceId: string, tspClient: TspClient) {
         this.outputId = outputId;
         this.tspClient = tspClient;
         this.traceId = traceId;
-        const threadStyleObject = {
-            '0': {
-                color: '646464',
-                height: 0.33
-            },
-            '2': {
-                color: '00C800',
-                height: 1
-            },
-            '3': {
-                color: '0000C8',
-                height: 1
-            },
-            '4': {
-                color: 'C80064',
-                height: 0.75
-            },
-            '1': {
-                color: 'C8C800',
-                height: 0.5
-            },
-            '5': {
-                color: 'C86400',
-                height: 0.5
-            },
-            '6': {
-                color: 'C8C8C8',
-                height: 0.5
-            }
-        };
-
-        const resourceStyleObject = {
-            '0': {
-                color: 'C8C8C8',
-                height: 0.66
-            },
-            '2': {
-                color: '00C800',
-                height: 1
-            },
-            '4': {
-                color: '0000C8',
-                height: 1
-            },
-            '16': {
-                color: 'C80064',
-                height: 0.75
-            },
-            '8': {
-                color: 'C89664',
-                height: 1
-            },
-            '1': {
-                color: 'C8C800',
-                height: 1
-            }
-        };
-        this.tmpStyleObject = {
-            'org.eclipse.tracecompass.internal.analysis.os.linux.core.threadstatus.ThreadStatusDataProvider': threadStyleObject,
-            'org.eclipse.tracecompass.internal.analysis.os.linux.core.threadstatus.ResourcesStatusDataProvider': resourceStyleObject
-        };
     }
 
     /**
@@ -95,11 +32,6 @@ export class StyleProvider {
         return this.styleModel;
     }
 
-    public getStylesTmp(_forceUpdate?: boolean): { [key: string]: { [key: string]: any } } {
-        const styles = this.tmpStyleObject[this.outputId];
-        return styles ? styles : {};
-    }
-
     /**
      * Get the style property value for the specified element style. The style
      * hierarchy is traversed until a value is found.
@@ -115,9 +47,11 @@ export class StyleProvider {
         const styleQueue: string[] = [];
         while (style !== undefined) {
             const styleValues = style.values;
-            const value = styleValues[property];
-            if (value) {
-                return value;
+            if (styleValues) {
+                const value = styleValues[property];
+                if (value) {
+                    return value;
+                }
             }
 
             // Get the next style
@@ -145,16 +79,18 @@ export class StyleProvider {
         const styleQueue: string[] = [];
         while (style) {
             const styleValues = style.values;
-            if (factor === undefined) {
-                const factorValue = styleValues[property + StyleProperties.FACTOR];
-                if (typeof factorValue === 'number') {
-                    factor = factorValue as number;
+            if (styleValues) {
+                if (factor === undefined) {
+                    const factorValue = styleValues[property + StyleProperties.FACTOR];
+                    if (typeof factorValue === 'number') {
+                        factor = factorValue as number;
+                    }
                 }
-            }
-            const value = styleValues[property];
-            if (typeof value === 'number') {
-                const numberValue = value as number;
-                return (factor === undefined) ? numberValue : factor * numberValue;
+                const value = styleValues[property];
+                if (typeof value === 'number') {
+                    const numberValue = value as number;
+                    return (factor === undefined) ? numberValue : factor * numberValue;
+                }
             }
 
             // Get the next style
@@ -184,27 +120,29 @@ export class StyleProvider {
         const styleQueue: string[] = [];
         while (style) {
             const styleValues = style.values;
-            if (blend === undefined) {
-                const blendValue = styleValues[property + StyleProperties.BLEND];
-                if (typeof blendValue === 'string') {
-                    blend = this.rgbaStringToColor(blendValue as string);
-                }
-            }
-            if (opacity === undefined) {
-                const opacityValue = styleValues[StyleProperties.OPACITY];
-                if (typeof opacityValue === 'number') {
-                    opacity = opacityValue as number;
-                    if (color) {
-                        break;
+            if (styleValues) {
+                if (blend === undefined) {
+                    const blendValue = styleValues[property + StyleProperties.BLEND];
+                    if (typeof blendValue === 'string') {
+                        blend = this.rgbaStringToColor(blendValue as string);
                     }
                 }
-            }
-            if (color === undefined) {
-                const value = styleValues[property];
-                if (typeof value === 'string') {
-                    color = value as string;
-                    if (opacity) {
-                        break;
+                if (opacity === undefined) {
+                    const opacityValue = styleValues[StyleProperties.OPACITY];
+                    if (typeof opacityValue === 'number') {
+                        opacity = opacityValue as number;
+                        if (color) {
+                            break;
+                        }
+                    }
+                }
+                if (color === undefined) {
+                    const value = styleValues[property];
+                    if (typeof value === 'string') {
+                        color = value as string;
+                        if (opacity) {
+                            break;
+                        }
                     }
                 }
             }
