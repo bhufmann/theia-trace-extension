@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { AbstractOutputComponent, AbstractOutputProps, AbstractOutputState } from './abstract-output-component';
 import * as React from 'react';
+import { Menu, Item, useContextMenu, ItemParams } from 'react-contexify';
 import { QueryHelper } from 'tsp-typescript-client/lib/models/query/query-helper';
 import { Entry } from 'tsp-typescript-client/lib/models/entry';
 import { ResponseStatus } from 'tsp-typescript-client/lib/models/response/responses';
@@ -9,6 +10,8 @@ import { getAllExpandedNodeIds } from './utils/filter-tree/utils';
 import { TreeNode } from './utils/filter-tree/tree-node';
 import ColumnHeader from './utils/filter-tree/column-header';
 import debounce from 'lodash.debounce';
+import '../../style/react-contextify.css';
+import { Property } from 'tsp-typescript-client/lib/models/property';
 
 type DataTreeOutputProps = AbstractOutputProps & {
 };
@@ -19,12 +22,16 @@ type DataTreeOuputState = AbstractOutputState & {
     collapsedNodes: number[];
     orderedNodes: number[];
     columns: ColumnHeader[];
+    timeProperties: { [key: string]: Property };
 };
+
+const MENU_ID = 'datatree.context.menuId';
 
 export class DataTreeOutputComponent extends AbstractOutputComponent<AbstractOutputProps, DataTreeOuputState> {
     treeRef: React.RefObject<HTMLDivElement> = React.createRef();
 
     private _debouncedFetchSelectionData = debounce(() => this.fetchSelectionData(), 500);
+    private event: React.MouseEvent<HTMLDivElement> | undefined;
 
     constructor(props: AbstractOutputProps) {
         super(props);
@@ -34,9 +41,10 @@ export class DataTreeOutputComponent extends AbstractOutputComponent<AbstractOut
             xyTree: [],
             collapsedNodes: [],
             orderedNodes: [],
-            columns: [{title: 'Name', sortable: true}],
+            columns: [{ title: 'Name', sortable: true }],
             optionsDropdownOpen: false,
-            additionalOptions: true
+            additionalOptions: true,
+            timeProperties: {}
         };
     }
 
@@ -55,10 +63,10 @@ export class DataTreeOutputComponent extends AbstractOutputComponent<AbstractOut
                 const columns = [];
                 if (headers && headers.length > 0) {
                     headers.forEach(header => {
-                        columns.push({title: header.name, sortable: true, resizable: true, tooltip: header.tooltip});
+                        columns.push({ title: header.name, sortable: true, resizable: true, tooltip: header.tooltip });
                     });
                 } else {
-                    columns.push({title: 'Name', sortable: true});
+                    columns.push({ title: 'Name', sortable: true });
                 }
                 this.setState({
                     outputStatus: treeResponse.status,
@@ -86,15 +94,16 @@ export class DataTreeOutputComponent extends AbstractOutputComponent<AbstractOut
         this.onToggleCollapse = this.onToggleCollapse.bind(this);
         this.onOrderChange = this.onOrderChange.bind(this);
         return this.state.xyTree.length
-            ?   <div
-                    tabIndex={0}
-                    id={this.props.traceId + this.props.outputDescriptor.id + 'focusContainer'}
-                    className='scrollable' style={{ height: this.props.style.height, width: this.getMainAreaWidth() }}
-                >
+            ? <div
+                tabIndex={0}
+                id={this.props.traceId + this.props.outputDescriptor.id + 'focusContainer'}
+                className='scrollable' style={{ height: this.props.style.height, width: this.getMainAreaWidth() }}
+            >
                 <EntryTree
                     entries={this.state.xyTree}
                     showCheckboxes={false}
                     collapsedNodes={this.state.collapsedNodes}
+                    onContextMenu={this.onContextMenu}
                     onToggleCollapse={this.onToggleCollapse}
                     onOrderChange={this.onOrderChange}
                     headers={this.state.columns}
@@ -110,8 +119,10 @@ export class DataTreeOutputComponent extends AbstractOutputComponent<AbstractOut
                 <div ref={this.treeRef} className='output-component-tree disable-select'
                     style={{ height: this.props.style.height, width: this.props.outputWidth }}
                 >
+                    {this.renderContextMenu()}
                     {this.renderTree()}
-                </div> :
+                </div>
+                :
                 <div tabIndex={0} id={this.props.traceId + this.props.outputDescriptor.id + 'focusContainer'} className='analysis-running-main-area'>
                     <i className='fa fa-refresh fa-spin' style={{ marginRight: '5px' }} />
                     <span>Analysis running</span>
@@ -120,12 +131,105 @@ export class DataTreeOutputComponent extends AbstractOutputComponent<AbstractOut
         </React.Fragment>;
     }
 
+    renderContextMenu(): React.ReactNode {
+        const items: JSX.Element[] = [];
+        if (this.treeRef.current && this.state.timeProperties && Object.entries(this.state.timeProperties).length > 0) {
+            Object.entries(this.state.timeProperties).forEach(([key, value]) => {
+                console.log('renderContextMenu: ' + key + '=' + value.value);
+                items.push(<Item key={key} id={key} onClick={this.handleItemClick}>Select {key}</Item>);
+            });
+        }
+        return <React.Fragment> {
+            <Menu id={MENU_ID} theme={'dark'} animation={'fade'} >
+                {items.map(element => element)}
+            </Menu>
+        }
+        </React.Fragment>;
+    }
+
+    protected handleItemClick = (args: ItemParams): void => {
+        const tooltip: { [key: string]: Property } = args.props.tooltip;
+        const min = tooltip[args.event.currentTarget.id];
+        if (min !== undefined) {
+            console.log('handleItemClick: ' + args.event.currentTarget.id + '=' + min.value);
+            let rx = /\[(\d*),.*/g;
+            let arr = rx.exec(min.value);
+            let start: bigint | undefined = undefined;
+            if (arr) {
+                start = BigInt(arr[1]) - this.props.unitController.offset;
+            }
+            rx = /.*,(\d*)\]/g;
+            arr = rx.exec(min.value);
+            let end: bigint | undefined = undefined;
+            if (arr) {
+                end = BigInt(arr[1]) - this.props.unitController.offset;
+            }
+            if (start !== undefined && end !== undefined) {
+                this.props.unitController.selectionRange = {
+                    start,
+                    end
+                };
+            }
+        }
+    };
+
     setFocus(): void {
         if (document.getElementById(this.props.traceId + this.props.outputDescriptor.id + 'focusContainer')) {
             document.getElementById(this.props.traceId + this.props.outputDescriptor.id + 'focusContainer')?.focus();
         } else {
             document.getElementById(this.props.traceId + this.props.outputDescriptor.id)?.focus();
         }
+    }
+
+    private onContextMenu = (event: React.MouseEvent<HTMLDivElement>, id: number): void => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.doContextMenu(event, id);
+    };
+
+    private async doContextMenu(event: React.MouseEvent<HTMLDivElement>, id: number): Promise<void> {
+        const tooltip: Property[] | undefined = await this.fetchProperties(id);
+        if (tooltip) {
+            const timeProperties: { [key: string]: Property } = {};
+            tooltip.forEach(property => {
+                if (property.dataType === 'TIME_RANGE') {
+                    timeProperties[property.name] = property;
+                }
+            });
+            this.setState({ timeProperties: timeProperties });
+            this.event = event;
+        }
+    }
+
+    show(event: React.MouseEvent<HTMLDivElement>): void {
+        const { show } = useContextMenu({
+            id: MENU_ID,
+        });
+
+        Object.entries(this.state.timeProperties).forEach(([key, value]) => {
+            console.log('show: ' + key + '=' + value.value);
+        });
+        show(event, {
+            props: {
+                tooltip: this.state.timeProperties,
+            },
+            position: this.getMenuPosition(event)
+        });
+    }
+
+    getMenuPosition(event: React.MouseEvent<HTMLDivElement>): {x: number, y: number} {
+        const refNode = this.treeRef.current;
+        if (refNode) {
+            return {
+                // Compute position relative to treeRef
+                x: (event.clientX - refNode.getBoundingClientRect().left),
+                y: (event.clientY - refNode.getBoundingClientRect().top)
+            };
+        }
+        return {
+            x: 0,
+            y: 0
+        };
     }
 
     private onToggleCollapse(id: number, nodes: TreeNode[]) {
@@ -139,11 +243,11 @@ export class DataTreeOutputComponent extends AbstractOutputComponent<AbstractOut
             newList = newList.concat(id);
         }
         const orderedIds = getAllExpandedNodeIds(nodes, newList);
-        this.setState({collapsedNodes: newList, orderedNodes: orderedIds});
+        this.setState({ collapsedNodes: newList, orderedNodes: orderedIds });
     }
 
     private onOrderChange(ids: number[]) {
-        this.setState({orderedNodes: ids});
+        this.setState({ orderedNodes: ids });
     }
 
     protected async waitAnalysisCompletion(): Promise<void> {
@@ -188,6 +292,11 @@ export class DataTreeOutputComponent extends AbstractOutputComponent<AbstractOut
     async componentDidUpdate(prevProps: DataTreeOutputProps): Promise<void> {
         if (this.props.selectionRange && this.props.selectionRange !== prevProps.selectionRange) {
             this._debouncedFetchSelectionData();
+        }
+
+        if (this.event && Object.entries(this.state.timeProperties).length > 0) {
+            this.show(this.event);
+            this.event = undefined;
         }
     }
 
@@ -238,5 +347,14 @@ export class DataTreeOutputComponent extends AbstractOutputComponent<AbstractOut
                 </li>
             </ul>
         </React.Fragment>;
+    }
+
+    private async fetchProperties(id: number): Promise<Property[]| undefined> {
+        const entryId = id; // TODO
+        const time = BigInt(1);
+        const entryIds = [entryId];
+        const parameters = QueryHelper.selectionTimeQuery([time], entryIds);
+        const propertiesResponse = await this.props.tspClient.fetchDataTreeProperties(this.props.traceId, this.props.outputDescriptor.id, parameters);
+        return propertiesResponse.getModel()?.model;
     }
 }

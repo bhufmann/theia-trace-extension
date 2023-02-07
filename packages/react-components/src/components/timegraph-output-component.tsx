@@ -408,6 +408,7 @@ export class TimegraphOutputComponent extends AbstractTreeOutputComponent<Timegr
                     showCheckboxes={false}
                     showCloseIcons={true}
                     onToggleCollapse={this.onToggleAnnotationCollapse}
+                    onRowClick={this.onRowClick}
                     onClose={this.onMarkerCategoryRowClose}
                     showHeader={false}
                     className='table-tree timegraph-tree'

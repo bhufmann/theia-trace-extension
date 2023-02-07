@@ -12833,6 +12833,13 @@ react-chartjs-2@^2.7.6:
     lodash "^4.17.19"
     prop-types "^15.7.2"
 
+react-contexify@^5.0.0:
+  version "5.0.0"
+  resolved "https://registry.yarnpkg.com/react-contexify/-/react-contexify-5.0.0.tgz#11b477550a0ee5a9a144399bc17c7c56bbc60057"
+  integrity sha512-2FIp7lxJ6dtfGr8EZ4uVV5p5TQjd0n2h/JU7PrejNIMiCeZWvSVPFh4lj1ZvjXosglBvP7q5JQQ8yUCdSaMSaw==
+  dependencies:
+    clsx "^1.1.1"
+
 react-dom@^18.0.0, react-dom@^18.2.0:
   version "18.2.0"
   resolved "https://registry.yarnpkg.com/react-dom/-/react-dom-18.2.0.tgz#22aaf38708db2674ed9ada224ca4aa708d821e3d"

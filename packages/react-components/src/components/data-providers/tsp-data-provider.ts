@@ -271,6 +271,15 @@ export class TspDataProvider {
         return tooltipResponse.getModel()?.model;
     }
 
+    async fetchTreeTooltip(entryId: number): Promise<{ [key: string]: string } | undefined> {
+        // use start of state for fetching tooltip since hover time is not available
+        const time = BigInt(1);
+        const entryIds = [entryId];
+        const parameters = QueryHelper.selectionTimeQuery([time], entryIds);
+        const tooltipResponse = await this.client.fetchTimeGraphTooltip(this.traceUUID, this.outputId, parameters);
+        return tooltipResponse.getModel()?.model;
+    }
+
     async fetchAnnotationTooltip(element: TimeGraphAnnotationComponent, viewRange: TimeRange): Promise<{ [key: string]: string } | undefined> {
         const elementRange = element.model.range;
         const offset = viewRange.getOffset() ? viewRange.getOffset() : BigInt(0);

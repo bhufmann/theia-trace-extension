@@ -6,6 +6,7 @@ interface TableCellProps {
     index: number;
     children?: React.ReactNode | React.ReactNode[];
     onRowClick: (id: number) => void;
+    onContextMenu: (event: React.MouseEvent<HTMLDivElement>, id: number) => void;
     selectedRow?: number;
 }
 
@@ -21,13 +22,24 @@ export class TableCell extends React.Component<TableCellProps> {
         }
     };
 
+    private onContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
+        const { node, onContextMenu } = this.props;
+        console.log('x:' + event.clientX + ', y:' + event.clientY);
+        if (onContextMenu) {
+            onContextMenu(event, node.id);
+        }
+    };
+
     render(): React.ReactNode {
         const { node, selectedRow, index } = this.props;
         const content = node.labels[index];
         const className = (selectedRow === node.id) ? 'selected' : '';
 
         return (
-            <td key={this.props.index+'-td-'+this.props.node.id} onClick={this.onClick} className={className}>
+            <td key={this.props.index+'-td-'+this.props.node.id}
+                     onClick={this.onClick}
+                     onContextMenu={event => {this.onContextMenu(event); }}
+                     className={className}>
                 <span>
                     {this.props.children}
                     {content}
