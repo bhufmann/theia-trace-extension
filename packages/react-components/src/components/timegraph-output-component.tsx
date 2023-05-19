@@ -34,10 +34,12 @@ import { getAllExpandedNodeIds, getIndexOfNode, listToTree, validateNumArray } f
 import { ReactTimeGraphContainer } from './utils/timegraph-container-component';
 import { Item, ItemParams, Menu, useContextMenu } from 'react-contexify';
 import { DataType } from 'tsp-typescript-client/lib/models/data-type';
+import { ExecutionEvent } from 'traceviewer-base/src/signals/execution-event';
 
 type TimegraphOutputProps = AbstractOutputProps & {
     addWidgetResizeHandler: (handler: () => void) => void;
     removeWidgetResizeHandler: (handler: () => void) => void;
+    customRowMenus?: string[];
 };
 
 type TimegraphOutputState = AbstractTreeOutputState & {
@@ -82,8 +84,6 @@ export class TimegraphOutputComponent extends AbstractTreeOutputComponent<Timegr
     private selectedMarkerCategories: string[] | undefined = undefined;
     private onSelectionChanged = (payload: { [key: string]: string }) => this.doHandleSelectionChangedSignal(payload);
     private pendingSelection: TimeGraphEntry | undefined;
-
-    private customRowMenus: string[] = [];
 
     constructor(props: TimegraphOutputProps) {
         super(props);
@@ -213,8 +213,6 @@ export class TimegraphOutputComponent extends AbstractTreeOutputComponent<Timegr
             collapsedNodes: this.state.collapsedNodes,
             collapsedMarkerNodes: this.state.collapsedMarkerNodes
         }));
-
-        this.customRowMenus.push('Follow Thread');
     }
 
     synchronizeTreeScroll(): void {
@@ -515,8 +513,8 @@ export class TimegraphOutputComponent extends AbstractTreeOutputComponent<Timegr
                         ) : (
                             <></>
                         )}
-                        {this.customRowMenus && this.customRowMenus.length > 0 ? (
-                            this.customRowMenus.map(key => (
+                        {this.props.customRowMenus && this.props.customRowMenus.length > 0 ? (
+                            this.props.customRowMenus.map(key => (
                                 <Item key={key} id={key} onClick={this.handleCustomItemClick}>
                                     {key}
                                 </Item>
@@ -561,10 +559,11 @@ export class TimegraphOutputComponent extends AbstractTreeOutputComponent<Timegr
     protected handleCustomItemClick = (args: ItemParams): void => {
         const data: { [key: string]: unknown } = args.props.data;
         if (data['custom']) {
-            const tooltip: { [key: string]: string } = data['custom'] as { [key: string]: string };
+            const tooltip: { [key: string]: ExecutionEvent } = data['custom'] as { [key: string]: ExecutionEvent };
             const min = tooltip[args.event.currentTarget.id];
             if (min !== undefined) {
-                console.log('Clicked on ' + min);
+                console.log('Clicked on ' + min.command);
+                signalManager().fireExecuteCommand(min);
             }
         }
     };
@@ -594,9 +593,16 @@ export class TimegraphOutputComponent extends AbstractTreeOutputComponent<Timegr
                 data['ranges'] = timeProperties;
             }
 
-            if (this.customRowMenus.length > 0) {
-                const menuProperties: { [key: string]: string } = {};
-                this.customRowMenus.forEach(menu => (menuProperties[menu] = menu));
+            if (this.props.customRowMenus && this.props.customRowMenus.length > 0) {
+                const params: {[key: string]: unknown } = {};
+                params['requested_items'] = id;
+                const menuProperties: { [key: string]: ExecutionEvent } = {};
+                this.props.customRowMenus.forEach(menu => (menuProperties[menu] = {
+                    command: menu, // TODO
+                    commandName: menu,
+                    source: this.props.outputDescriptor.id,
+                    parameters: params,
+                }));
                 data['custom'] = menuProperties;
             }
 

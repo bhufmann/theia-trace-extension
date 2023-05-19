@@ -5,6 +5,7 @@ import { Trace } from 'tsp-typescript-client/lib/models/trace';
 import { OpenedTracesUpdatedSignalPayload } from './opened-traces-updated-signal-payload';
 import { OutputAddedSignalPayload } from './output-added-signal-payload';
 import { TimeRangeUpdatePayload } from './time-range-data-signal-payloads';
+import { ExecutionEvent } from './execution-event';
 
 export declare interface SignalManager {
     fireTraceOpenedSignal(trace: Trace): void;
@@ -73,7 +74,8 @@ export const Signals = {
     SAVE_AS_CSV: 'save as csv',
     VIEW_RANGE_UPDATED: 'view range updated',
     SELECTION_RANGE_UPDATED: 'selection range updated',
-    REQUEST_SELECTION_RANGE_CHANGE: 'change selection range'
+    REQUEST_SELECTION_RANGE_CHANGE: 'change selection range',
+    EXECUTE_COMMAND: 'execute command'
 };
 
 export class SignalManager extends EventEmitter implements SignalManager {
@@ -168,6 +170,9 @@ export class SignalManager extends EventEmitter implements SignalManager {
     }
     fireRequestSelectionRangeChange(payload: TimeRangeUpdatePayload): void {
         this.emit(Signals.REQUEST_SELECTION_RANGE_CHANGE, payload);
+    }
+    fireExecuteCommand(payload: ExecutionEvent): void {
+        this.emit(Signals.EXECUTE_COMMAND, payload);
     }
 }
 

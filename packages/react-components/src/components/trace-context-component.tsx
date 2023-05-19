@@ -720,10 +720,13 @@ export class TraceContextComponent extends React.Component<TraceContextProps, Tr
                                 outputProps.persistChartState = this.chartPersistedState.payload;
                                 this.chartPersistedState = undefined;
                             }
+                            const customRowMenus = [];
+                            customRowMenus.push('Follow Thread');
                             return (
                                 <TimegraphOutputComponent
                                     key={output.id}
                                     {...outputProps}
+                                    customRowMenus={customRowMenus}
                                     addWidgetResizeHandler={this.addWidgetResizeHandler}
                                     removeWidgetResizeHandler={this.removeWidgetResizeHandler}
                                     className={this.state.pinnedView?.id === output.id ? 'pinned-view-shadow' : ''}
