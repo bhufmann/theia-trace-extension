@@ -5,6 +5,7 @@ Date: 2023-06-20
 ## Status
 
 Proposed
+Version v2
 
 ## Context
 
@@ -180,6 +181,8 @@ sequenceDiagram
 
 ### Configuration service per experiment
 
+See [Updated API poposal](#Updated API poposal) for newer, augmented proposal to this chapter.
+
 For this data provider service will be augmented for managing configurations per experiment.
 
     GET experiments/{expUUID}/outputs/config
@@ -201,7 +204,7 @@ sequenceDiagram
     participant user as User
     participant client as TSP Client
     participant server as Trace Server
-    user->>client: Select global confiugration manager
+    user->>client: Select global configuration manager
     client->>client: Open configuration manager UI
     client->>server: GET /config/
     server->>client: 200: List of ConfigurationSourceType
@@ -290,4 +293,482 @@ Having new TSP endpoints will make the TSP more complicated to use, and interest
 ### Risks introduced
 
 The TSP will be bigger and more APIs need to be maintained on all levels of the client-server application.
+
+### Updated API poposal
+
+The update API proposal augments the `OutputDescriptor`, `ConfigurationSourceType` and `Configuation` to allow for more flexibility in supporting more use cases to configure new (clone data providers), other existing data provider or own data provider.
+
+
+**Updates to OutputDescriptor**
+
+```javascript
+OutputDescriptor
+    /**
+     * Output provider's ID
+     */
+    id: string;
+    /**
+     * Human readable name
+     */
+    name: string;
+    /**
+     * Description of the output provider
+     */
+    description: string;
+    /**
+     * Type of data returned by this output.
+     * Serve as a hint to determine what kind of view should be use for this output (ex. XY, Time Graph, Table, etc..)
+     */
+    type: string;
+    configSourcesIds?: string[];
+    configIds?: string[];
+}
+```
+
+```javascript
+ConfigurationSourceType {
+    name: string,
+    description: string,
+    id: string,
+    scope: string,
+    parameterDescriptors: ConfigurationParameterDescriptor[]
+}
+
+```
+
+```javascript
+ConfigurationParameterDescriptor {
+    keyName: string,
+    description: string,
+    dataType: string,
+    isRequired: bool
+}
+```
+
+```javascript
+Configuration {
+    name: string,
+    description: string,
+    id: string,
+    sourceTypeId: string,
+    parameters: map<string, object>,
+}
+```
+
+**Example Custom Flame Chart**.
+
+```json
+ConfigurationSourceType {
+    "name": Custom Flame Charts,
+    "description": Manage custom flame chartsbased on input parameters,
+    "id": "custom.flame.charts.id",
+    "scope": "data_provider", // or self, data_provider, tree, experiment, trace
+    "parameterDescriptors": [
+        {
+            "keyName": "title",
+            "description": "Provide a name to be shown in UI",
+            "dataType": "string",
+            "isRequired": "true"
+        },
+        {
+            "keyName": "filter",
+            "description": "Provide a filter string according to filter language",
+            "dataType": "string",
+            "isRequired": "true"
+        }
+    ]
+}
+```
+
+```json
+OutputDescriptor {
+    "id": "flamechart.id",
+    "name": "Flame Chart",
+    "description": "Flame Chart description",
+    "type": "TIME_GRAPH",
+    "configSourcesIds": ["custom.flame.charts.id"]
+}
+```
+
+`Menu in Available View beside "Flame Chart"`: `"Custom Flame Charts..."`
+
+`User input`:
+```json
+    {"title": "CPU 0-1 only", "filter": "cpu matches [0-1]"}
+```
+
+```json
+Configuration {
+    "name": "CPU 0-1 only",
+    "description": "Custom call stack 'CPU 0-1 only' ",
+    "id": "custom.generated.id.1",
+    "sourceTypeId": "custom.call.stacks.id",
+    "parameters": { 
+        "title": "CPU 0-1 only",
+        "filter": "cpu matches [0-1]" 
+    }
+}
+```
+
+`"New Descriptor"`
+
+```json
+OutputDescriptor { 
+        "id": "custom.callstack.id",
+        "name": "CPU 0-1 only",  // name of configuration
+        "description": "Custom call stack 'CPU 0-1 only' ", // description of cofiguration
+        "type": "TIME_GRAPH",
+        "configIds" :  ["custom.generated.id.1"]
+    }
+```
+
+```mermaid
+sequenceDiagram
+    participant user as User
+    participant client as TSP Client
+    participant server as Trace Server
+    client->>server: GET /experiments/{expUUID}/outputs
+    server->>client: 200: List of Available Views
+    client->>client: Render "Available Views" view and config menu buttons if configSourcesIds.length() > 0
+    user->>client: Click menu beside 'Flame Chart' in 'Available Views'
+    client->>client: View menu opens with entry all names from configSourcesIds
+    user->>client: Click on 'Custom Flame Charts..."
+    client->>client: Open Dialog for ConfigurationSourceType:'Custom Flame Charts'
+    user->>client: Fill in 'title' and 'filter' and click on 'Apply'
+    client->>server: POST /config/types/{typeId} {title, filter}
+    server->>server: Validate and persist config
+    server->>client: 200: Configuration Instance
+    client->>server: POST /experiments/{expUUID}/outputs/{outputId}/configs/ {configId}
+    server->>server: Create new data provider
+    server->>client: 200: OutputDescriptor
+    client->>client: Refresh 'Available views' view
+    user->>client: User clicks on new output
+    client->>client: Customized view opens
+ ```   
+
+**Example: Critical Path**.
+
+```json
+ConfigurationSourceType {
+    "name": Follow Thread Filter,
+    "description": Manages parameters for thread filter,
+    "id": "thread.filter.id",
+    "scope": "tree", // or data_provider, tree (for context sensitive menu), experiment, trace, 
+    "parameterDescriptors": [
+        {
+            "keyName": "requested_items",
+            "description": "ids of requested_itmes",
+            "dataType": "None",
+            "isRequired": "true"
+        }
+    ]
+}
+```
+
+```json
+OutputDescriptor {
+    "id": "thread.status.id",
+    "name": "Thread Status",
+    "description": "Thread Status description",
+    "type": "TIME_GRAPH",
+    "configSourcesIds": ["follow.thread.id"]
+}
+```
+
+`Context sensitive menu on tree of "Thread Status View"`: `"Follow Thread Filter"` 
+
+`User input by selection and not dialog`:
+
+```json
+Configuration {
+    "name": "My thread", // thread name
+    "description": "Thread filter",
+    "id": "thread.filter.generated.id.1",
+    "sourceTypeId": "thread.filter.id",
+    "parameters": {
+        "extraParams": "{\"name\": \"My Thread\", \"tid\": \"1234\", \"host\": \"hostId\"}" ,
+    }
+}
+
+`New Descriptor`
+
+```json
+OutputDescriptor { 
+        "id": "critical.path.id",
+        "name": "Critical Path for 'My thread'",  // name of configuration
+        "description": "Critical Path for ' ", // description of cofiguration
+        "type": "TIME_GRAPH",
+        "configIds" :  ["custom.generated.id.1"]
+    }
+```
+Create 
+- When opening critical path view add extraParams to queries
+- When doing it a second time critical path view needs to be refreshed with new extra query params
+    Alternatively, you can have multiple critical path data provider for each thread configured.
+
+**Example: Active Thread Filter**.
+
+```json
+ConfigurationSourceType {
+    "name": Active Thread Filter,
+    "description": Manages parameters for active thread filter,
+    "id": "active.thread.filter.id",
+    "scope": "self", // or self, data_provider, tree (for context sensitive menu), experiment, trace, 
+    "parameterDescriptors": [
+        {
+            "keyName": "isActiveThreadFilter",
+            "description": "Flag to indicate active thread filter",
+            "dataType": "boolean",
+            "isRequired": "true"
+        },
+        {
+            "keyName": "cpus",
+            "description": "list of cpus, e.g. 0 or 0-2, or 0,1,4. If missing all cpus.",
+            "dataType": "string",
+            "isRequired": "false"
+        },
+    ]
+}
+```
+
+```json
+OutputDescriptor {
+    "id": "thread.status.id",
+    "name": "Thread Status",
+    "description": "Thread Status description",
+    "type": "TIME_GRAPH",
+    "configSourcesIds": ["active.thread.filter.id"]
+}
+```
+
+`View menu in "Thread Status View" (because of self)`: `"Active Thread Filter..."`
+
+`User input`:
+```json
+    {"isActiveThreadFilter": "true", "cpus": "0-1"}
+```
+
+```json
+Configuration {
+    "name": "Active Thread Filter for cpu 0-1",
+    "description": "Active Thread Filter for cpu 0-1",
+    "id": "active.thread.filter.generated.id.1",
+    "sourceTypeId": "active.thread.filter.id",
+    "parameters": {
+        "extraParams": "{\"isActiveThreadFilter\": \"true\", \"requested_cpus\": [0, 1] }" ,
+    }
+}
+```
+
+`New Descriptor`
+
+```json
+OutputDescriptor { 
+    "id": "thread.status.id",
+    "name": "Thread Status",
+    "description": "Thread Status description",
+    "type": "TIME_GRAPH",
+    "configIds" :  ["active.thread.filter.generated.id.1"]
+    }
+```
+
+- When doing clicking a second time, user can add new filter
+
+
+**Example: XY Chart From Events Table**.
+
+```json
+ConfigurationSourceType {
+    "name": Custom XY TIME Charts,
+    "description": Manages custom XY time series,
+    "id": "custom.xy.time.charts.id",
+    "scope": "data_provider", // or self, data_provider, tree (for context sensitive menu), experiment, trace, 
+    "parameterDescriptors": [
+        {
+            "keyName": "title",
+            "description": "title of graph",
+            "dataType": "string",
+            "isRequired": "true"
+        },
+        {
+            "keyName": "columns",
+            "description": "Names of columns to plot",
+            "dataType": "array",
+            "isRequired": "true"
+        },
+        {
+            "keyName": "filter",
+            "description": "Filter condition",
+            "dataType": "array",
+            "isRequired": "true"
+        }
+        {
+            "keyName": "y-axis",
+            "description": "Names of y-axis",
+            "dataType": "string",
+            "isRequired": "false"
+        },
+        {
+            "keyName": "y-unit",
+            "description": "Unit of y-axis",
+            "dataType": "string",
+            "isRequired": "false"
+        },
+        {
+            "keyName": "y-data-type",
+            "description": "data type of y-axis",
+            "dataType": "string",
+            "isRequired": "false"
+        }
+    ]
+}
+```
+
+```json
+OutputDescriptor {
+    "id": "events.table.id",
+    "name": "Events Table",
+    "description": "Event Table description",
+    "type": "TABLE",
+    "configSourcesIds": ["custom.xy.time.charts.id"]
+}
+```
+
+`Menu in Available views view beside Events Table`: `"Custom XY TIME Charts..."`
+
+`User input`:
+```json
+    {
+        "title": "CPU Number Plot", 
+        "columns": ["CPU"],
+        "filter": "tid==1234",
+        "y-axis": "CPU",
+        "y-unit": "no-unit",
+        "y-data-type": "Number"
+    }
+```
+
+```json
+Configuration {
+    "name": "CPU Number Plot",
+    "description": "Plots the CPU over time for given filter",
+    "id": "custom.xy.time.charts.instance.1",
+    "sourceTypeId": "custom.xy.time.charts.id",
+    "parameters": {
+        "title": "CPU Number Plot", 
+        "columns": ["CPU"], 
+        "filter": "tid==1234",
+        "y-axis": "CPU",
+        "y-unit": "no-unit",
+        "y-data-type": "Number"
+    }
+}
+```
+
+`New Descriptor`
+
+```json
+OutputDescriptor { 
+    "id": "custom.xy.plot.id.1",
+    "name": "CPU Number Plot",
+    "description": "Plots the CPU over time for given filter",
+    "type": "TREE_TIME_XY",
+    "configIds" :  ["custom.xy.time.charts.instance.1"]
+    }
+```
+
+
+
+
+**Example: Custom Function Execution Statistics**.
+
+```json
+ConfigurationSourceType {
+    "name": Custom Function Execution Statistics,
+    "description": Manages Custom Function Execution Statistics,
+    "id": "custom.fct.execution.stats.id",
+    "scope": "data_provider", // or self, data_provider, tree (for context sensitive menu), experiment, trace, 
+    "parameterDescriptors": [
+        {
+            "keyName": "title",
+            "description": "title of graph",
+            "dataType": "string",
+            "isRequired": "true"
+        },
+        {
+            "keyName": "aggregation",
+            "description": "Aggregate stats for functions matching regex",
+            "dataType": "string",
+            "isRequired": "optional"
+        },
+        {
+            "keyName": "filter",
+            "description": "Show stats for functions matching regex",
+            "dataType": "array",
+            "isRequired": "optional"
+        }
+    ]
+}
+```
+
+```json
+OutputDescriptor {
+    "id": "segmentstore.latency.analysis.statistics:callstack.analysis",
+    "name": "Function Execution statistics",
+    "description": "Function Execution statistics",
+    "type": "DATA_TREE",
+    "configSourcesIds": ["custom.fct.execution.stats.id"]
+}
+```
+
+`Menu in Available views view beside Function Duration Statistics`: `"Custom Function Execution Statistics..."`
+
+`User input`:
+```json
+    {
+        "title": "Grouped Stats", 
+        "aggregation": "label matches COM.*"
+    }
+```
+
+```json
+Configuration {
+    "name": "Grouped Stats",
+    "description": "Custom function duration statistics aggregated by name: [COM.*]",
+    "id": "custom.fct.execution.stats.id.instance.1",
+    "sourceTypeId": "custom.fct.execution.stats.id",
+    "parameters": {
+        "title": "Grouped Stats", 
+        "aggregation": "label matches COM.*"
+    }
+}
+```
+
+`New Descriptor`
+
+```json
+OutputDescriptor { 
+    "id": "segmentstore.latency.analysis.statistics:callstack.analysis:custom.fct.execution.stats.id.instance.1",
+    "name": "CPU Number Plot",
+    "description": "Custom function duration statistics aggregated by name: [COM.*]",
+    "type": "DATA_TREE",
+    "configIds" :  ["custom.fct.execution.stats.id.instance.1"]
+    }
+```
+
+
+
+
+### Notes
+
+It would be good that for each domain in server e.g. linux kernel there is a common language so that elements can referenced by the same keys
+
+thread-name
+host-id
+tid
+pid
+ppid
+cpu
+others?
+
 
