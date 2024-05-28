@@ -181,7 +181,7 @@ sequenceDiagram
 
 ### Configuration service per experiment
 
-See [Updated API poposal](#Updated API poposal) for newer, augmented proposal to this chapter.
+See [Updated API poposal](#updated-api-poposal) for newer, augmented proposal to this chapter.
 
 For this data provider service will be augmented for managing configurations per experiment.
 
@@ -296,34 +296,32 @@ The TSP will be bigger and more APIs need to be maintained on all levels of the 
 
 ### Updated API poposal
 
-The update API proposal augments the `OutputDescriptor`, `ConfigurationSourceType` and `Configuation` to allow for more flexibility in supporting more use cases to configure new (clone data providers), other existing data provider or own data provider.
+The update API proposal augments the `OutputDescriptor`, and `ConfigurationSourceType`, as well as and adds new data structures, `ActionDescriptor` and `ExtraQueryParameter` to allow for more flexibility in supporting more use cases to configure new (clone data providers), other existing data provider or own data provider.
 
-
-**Updates to OutputDescriptor**
+**Updated or new data structures**
 
 ```javascript
-OutputDescriptor
-    /**
-     * Output provider's ID
-     */
-    id: string;
-    /**
-     * Human readable name
-     */
-    name: string;
-    /**
-     * Description of the output provider
-     */
-    description: string;
-    /**
-     * Type of data returned by this output.
-     * Serve as a hint to determine what kind of view should be use for this output (ex. XY, Time Graph, Table, etc..)
-     */
-    type: string;
-    configSourcesIds?: string[];
-    configIds?: string[];
+    OutputDescriptor {
+        id: string,
+        name: string,
+        description: string,
+        type: string,  // provider type
+        // new parameter
+        hasActions?: boolean // optional, default false
+    }
+```
+
+```javascript
+ActionDescriptor {
+    name: string,
+    description: string,
+    id: string,
+    scope: string, // view, self, tree, graph (location of action)
+    isToggle?: boolean, // for toggle button
+    configType: ConfigurationSourceType
 }
 ```
+**TODO: ActionDescriptors need a way to group, have sub-menus and where to put it (e.g. before/after)**
 
 ```javascript
 ConfigurationSourceType {
@@ -331,13 +329,13 @@ ConfigurationSourceType {
     description: string,
     id: string,
     scope: string,
-    parameterDescriptors: ConfigurationParameterDescriptor[]
+    parameterDescriptors: ConfigurationParameterDescriptor[] // schema
 }
-
 ```
+Note, consider replacing `parameterDescriptors: ConfigurationParameterDescriptor[]` with a [JSON schema](https://json-schema.org/).
 
 ```javascript
-ConfigurationParameterDescriptor {
+ConfigurationParameterDescriptor { 
     keyName: string,
     description: string,
     dataType: string,
@@ -346,27 +344,51 @@ ConfigurationParameterDescriptor {
 ```
 
 ```javascript
-Configuration {
-    name: string,
-    description: string,
-    id: string,
-    sourceTypeId: string,
-    parameters: map<string, object>,
+ExtraQueryParameter {
+    param: { [key: string]: string }  // map string -> string to avoid issues with timestamp
 }
 ```
 
-**Example Custom Flame Chart**.
+### Examples use case realizations using actions
 
-```json
-ConfigurationSourceType {
-    "name": Custom Flame Charts,
-    "description": Manage custom flame chartsbased on input parameters,
+#### Example Custom Flame Chart
+
+```mermaid
+sequenceDiagram
+    participant user as User
+    participant client as TSP Client
+    participant server as Trace Server
+    client->>server: GET /experiments/{expUUID}/outputs
+    server->>client: 200: List of Available Views
+    client->>client: Render "Available Views" view and config menu buttons if hasActions
+    user->>client: Click config menu beside 'Flame Chart''
+    client->>server: GET /experiments/{expUUID}/outputs/{outputId}/actions {scope=view}
+    server->>client: 200: List of ActionDescriptors
+    client->>client: Render menu for each action
+    user->>client: Click on "Custom Flame Charts..."
+    client->>client: Open Dialog for ActionDescriptor
+    user->>client: Fill in 'title' and 'filter' and click on 'Apply'
+    client->>server: POST experiments/{expUUID}/outputs/{outputId}/actions/{actionId} {title, filter}
+    server->>server: Validate, create data provider, persist config (experiment and global)
+    server->>client: 200: OutputDescriptor
+    client->>client: Refresh 'Available views' view
+    user->>client: User clicks on new output
+    client->>client: Customized view opens
+ ```
+Notes: 
+- Data provider may decide to persist input parameters (configuraton) in global server-wide storage that can be manage through [Global Configuration Service](#global-configuration-service).
+- Data provider may return additional actions in List of Action Descriptors for applying existing configs that had been storead in global-wide storage
+
+```javascript
+ActionDescriptor {
+    "name": Create Custom Flame Chart...,
+    "description": Manage instance of a custom flame based on input parameters,
     "id": "custom.flame.charts.id",
-    "scope": "data_provider", // or self, data_provider, tree, experiment, trace
+    "scope": "view", // self, view, tree, graph (location of action)
     "parameterDescriptors": [
         {
             "keyName": "title",
-            "description": "Provide a name to be shown in UI",
+            "description": "Provide a name of custom flame chart to be shown in UI",
             "dataType": "string",
             "isRequired": "true"
         },
@@ -380,47 +402,45 @@ ConfigurationSourceType {
 }
 ```
 
-```json
+```javascript
 OutputDescriptor {
     "id": "flamechart.id",
     "name": "Flame Chart",
     "description": "Flame Chart description",
     "type": "TIME_GRAPH",
-    "configSourcesIds": ["custom.flame.charts.id"]
+    "hasActions": "true" // To avoid querying each data provider one-by-one
 }
 ```
-
-`Menu in Available View beside "Flame Chart"`: `"Custom Flame Charts..."`
 
 `User input`:
-```json
+```javascript
     {"title": "CPU 0-1 only", "filter": "cpu matches [0-1]"}
-```
-
-```json
-Configuration {
-    "name": "CPU 0-1 only",
-    "description": "Custom call stack 'CPU 0-1 only' ",
-    "id": "custom.generated.id.1",
-    "sourceTypeId": "custom.call.stacks.id",
-    "parameters": { 
-        "title": "CPU 0-1 only",
-        "filter": "cpu matches [0-1]" 
-    }
-}
 ```
 
 `"New Descriptor"`
 
-```json
+```javascript
 OutputDescriptor { 
         "id": "custom.callstack.id",
         "name": "CPU 0-1 only",  // name of configuration
         "description": "Custom call stack 'CPU 0-1 only' ", // description of cofiguration
         "type": "TIME_GRAPH",
-        "configIds" :  ["custom.generated.id.1"]
+        "hasActions": "true"   // for delete, data provider action
     }
 ```
+
+**Questions**
+- How to delete data provider? 
+    - New data provider descriptor will have action to remove data provider. 
+- How list configuration? 
+    - Source data provider will have action to apply existing configurations on server
+    - User can use [Global configuration service](#global-configuration-service) to list configurations
+- How to export/import config
+    Use [Global configuration service](#global-configuration-service) to list configurations
+
+-----------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------
+#### Example: Critical Path
 
 ```mermaid
 sequenceDiagram
@@ -429,31 +449,27 @@ sequenceDiagram
     participant server as Trace Server
     client->>server: GET /experiments/{expUUID}/outputs
     server->>client: 200: List of Available Views
-    client->>client: Render "Available Views" view and config menu buttons if configSourcesIds.length() > 0
-    user->>client: Click menu beside 'Flame Chart' in 'Available Views'
-    client->>client: View menu opens with entry all names from configSourcesIds
-    user->>client: Click on 'Custom Flame Charts..."
-    client->>client: Open Dialog for ConfigurationSourceType:'Custom Flame Charts'
-    user->>client: Fill in 'title' and 'filter' and click on 'Apply'
-    client->>server: POST /config/types/{typeId} {title, filter}
-    server->>server: Validate and persist config
-    server->>client: 200: Configuration Instance
-    client->>server: POST /experiments/{expUUID}/outputs/{outputId}/configs/ {configId}
-    server->>server: Create new data provider
-    server->>client: 200: OutputDescriptor
+    client->>client: Render "Available Views" view and config menu buttons if hasActions
+    user->>client: User selects "Thread Status View"
+    Note right of user: Thread Status view opens
+    user->>client: Right-mouse click on thread in tree
+    client->>server: GET /experiments/{expUUID}/outputs/{outputId}/actions {scope=tree}
+    server->>client: 200: List of ActionDescriptors
+    client->>client: Render view menu for each action with entry 'Follow Thread"
+    client->>server: POST experiments/{expUUID}/outputs/{outputId}/actions/{actionId} {requested_items=[{itemId}]}
+    server->>server: Validate, create custom query parameter
+    server->>client: 200: ExtraQueryParameter
     client->>client: Refresh 'Available views' view
     user->>client: User clicks on new output
     client->>client: Customized view opens
- ```   
+ ```
 
-**Example: Critical Path**.
-
-```json
-ConfigurationSourceType {
-    "name": Follow Thread Filter,
-    "description": Manages parameters for thread filter,
+```javascript
+ActionDescriptor {
+    "name": Follow Thread,
+    "description": Follows a selected thread,
     "id": "thread.filter.id",
-    "scope": "tree", // or data_provider, tree (for context sensitive menu), experiment, trace, 
+    "scope": "tree", // self, view, tree, graph (location of action)
     "parameterDescriptors": [
         {
             "keyName": "requested_items",
@@ -465,55 +481,73 @@ ConfigurationSourceType {
 }
 ```
 
-```json
+```javascript
 OutputDescriptor {
     "id": "thread.status.id",
     "name": "Thread Status",
     "description": "Thread Status description",
     "type": "TIME_GRAPH",
-    "configSourcesIds": ["follow.thread.id"]
+    "hasActions": "true"
 }
 ```
 
-`Context sensitive menu on tree of "Thread Status View"`: `"Follow Thread Filter"` 
-
+`Context sensitive menu on tree of "Thread Status View"`: `"Follow Thread"` 
 `User input by selection and not dialog`:
+`Don't allow multiple`
 
-```json
-Configuration {
-    "name": "My thread", // thread name
-    "description": "Thread filter",
-    "id": "thread.filter.generated.id.1",
-    "sourceTypeId": "thread.filter.id",
-    "parameters": {
-        "extraParams": "{\"name\": \"My Thread\", \"tid\": \"1234\", \"host\": \"hostId\"}" ,
+
+```javascript
+ExtraQueryParameter {
+    "param": {
+        "name": "MyThread", 
+        "tid": "1234",
+        "hostId: "hostID"
     }
 }
-
-`New Descriptor`
-
-```json
-OutputDescriptor { 
-        "id": "critical.path.id",
-        "name": "Critical Path for 'My thread'",  // name of configuration
-        "description": "Critical Path for ' ", // description of cofiguration
-        "type": "TIME_GRAPH",
-        "configIds" :  ["custom.generated.id.1"]
-    }
+OutputDescriptor {
+    "id": "critical.path.id",
+    "name": "Critical Path",
+    "description": "Critical path description",
+    "type": "TIME_GRAPH",
+    "hasActions": "true" // to unfollow
+}
 ```
-Create 
-- When opening critical path view add extraParams to queries
-- When doing it a second time critical path view needs to be refreshed with new extra query params
-    Alternatively, you can have multiple critical path data provider for each thread configured.
 
-**Example: Active Thread Filter**.
+Note:
+    - `param` needs to replaced by something specific to follow thread
+    - Extra query param are added to all data provider queries of returned data provider
+    - If user sends it again, old filter is replaced
 
-```json
-ConfigurationSourceType {
-    "name": Active Thread Filter,
-    "description": Manages parameters for active thread filter,
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+#### Example: Active Thread Filters
+
+```mermaid
+sequenceDiagram
+    participant user as User
+    participant client as TSP Client
+    participant server as Trace Server
+    client->>server: GET /experiments/{expUUID}/outputs
+    server->>client: 200: List of Available Views
+    client->>client: Render "Available Views" view and config menu buttons if hasActions
+    user->>client: Click on 'Thread Status view'
+    Note right of user: Thread Status view opens
+    user->>client: Click on view menu
+    client->>server: GET /experiments/{expUUID}/outputs/{outputId}/actions {scope=self}
+    server->>client: 200: List of ActionDescriptors
+    client->>client: Render view menu for each action with entry 'Active Threads Filter"
+    client->>server: POST experiments/{expUUID}/outputs/{outputId}/actions/{actionId} {isActiveThreadFilter=true, cpu=[0-1]}
+    server->>server: Validate, create extra query parameters
+    server->>client: 200: ExtraQueryParameter
+    client->>client: Refresh tree and graph view
+ ```
+
+```javascript
+ActionDescriptor {
+    "name": "Active Thread Filter",
+    "description": "Show only active threads for all or selected cpus",
     "id": "active.thread.filter.id",
-    "scope": "self", // or self, data_provider, tree (for context sensitive menu), experiment, trace, 
+    "scope": "self", // self, view, tree, graph (location of action)
     "parameterDescriptors": [
         {
             "keyName": "isActiveThreadFilter",
@@ -531,58 +565,66 @@ ConfigurationSourceType {
 }
 ```
 
-```json
+```javascript
 OutputDescriptor {
     "id": "thread.status.id",
     "name": "Thread Status",
     "description": "Thread Status description",
     "type": "TIME_GRAPH",
-    "configSourcesIds": ["active.thread.filter.id"]
+    "hasActions": "true"
 }
 ```
 
-`View menu in "Thread Status View" (because of self)`: `"Active Thread Filter..."`
-
-`User input`:
-```json
+```javascript
     {"isActiveThreadFilter": "true", "cpus": "0-1"}
 ```
 
-```json
-Configuration {
-    "name": "Active Thread Filter for cpu 0-1",
-    "description": "Active Thread Filter for cpu 0-1",
-    "id": "active.thread.filter.generated.id.1",
-    "sourceTypeId": "active.thread.filter.id",
-    "parameters": {
-        "extraParams": "{\"isActiveThreadFilter\": \"true\", \"requested_cpus\": [0, 1] }" ,
+```javascript
+ExtraQueryParameter {
+    "param": {
+        "isActiveThreadFilter": "true", 
+        "cpus": "[0-1]"
     }
 }
 ```
 
-`New Descriptor`
+Note:
+    - Toggle button, it will be replaced by previous selection
+    - Extra query param are added to all data provider queries of `self` view when button active
 
-```json
-OutputDescriptor { 
-    "id": "thread.status.id",
-    "name": "Thread Status",
-    "description": "Thread Status description",
-    "type": "TIME_GRAPH",
-    "configIds" :  ["active.thread.filter.generated.id.1"]
-    }
+-----------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------
+#### Example: XY Chart From Events Table
+
+```mermaid
+sequenceDiagram
+    participant user as User
+    participant client as TSP Client
+    participant server as Trace Server
+    client->>server: GET /experiments/{expUUID}/outputs
+    server->>client: 200: List of Available Views
+    client->>client: Render "Available Views" view and config menu buttons if hasActions
+    user->>client: Click config menu beside 'Events Table''
+    client->>server: GET /experiments/{expUUID}/outputs/{outputId}/actions {scope=view}
+    server->>client: 200: List of ActionDescriptors
+    client->>client: Render menu for each action
+    user->>client: Click on "Create Custom XY TIME Chart..."
+    client->>client: Open Dialog for ActionDescriptor
+    user->>client: Fill in 'title' and 'filter' and click on 'Apply'
+    client->>server: POST experiments/{expUUID}/outputs/{outputId}/actions/{actionId} {title, filter}
+    server->>server: Validate, create data provider, persist config (experiment and global)
+    server->>client: 200: OutputDescriptor
+    client->>client: Refresh 'Available views' view
+    user->>client: User clicks on new output
+    client->>client: Customized view opens
 ```
 
-- When doing clicking a second time, user can add new filter
-
-
-**Example: XY Chart From Events Table**.
-
-```json
-ConfigurationSourceType {
-    "name": Custom XY TIME Charts,
-    "description": Manages custom XY time series,
+```javascript
+ActionDescriptor {
+    "name": Create Custom XY Chart... ,
+    "description": Create custom XY chart,
     "id": "custom.xy.time.charts.id",
-    "scope": "data_provider", // or self, data_provider, tree (for context sensitive menu), experiment, trace, 
+    "scope": "view", // self, view, tree, graph (location of action)
     "parameterDescriptors": [
         {
             "keyName": "title",
@@ -624,20 +666,18 @@ ConfigurationSourceType {
 }
 ```
 
-```json
+```javascript
 OutputDescriptor {
     "id": "events.table.id",
     "name": "Events Table",
     "description": "Event Table description",
     "type": "TABLE",
-    "configSourcesIds": ["custom.xy.time.charts.id"]
+    "hasActions: "true"
 }
 ```
 
-`Menu in Available views view beside Events Table`: `"Custom XY TIME Charts..."`
-
 `User input`:
-```json
+```javascript
     {
         "title": "CPU Number Plot", 
         "columns": ["CPU"],
@@ -648,116 +688,135 @@ OutputDescriptor {
     }
 ```
 
-```json
-Configuration {
-    "name": "CPU Number Plot",
-    "description": "Plots the CPU over time for given filter",
-    "id": "custom.xy.time.charts.instance.1",
-    "sourceTypeId": "custom.xy.time.charts.id",
-    "parameters": {
-        "title": "CPU Number Plot", 
-        "columns": ["CPU"], 
-        "filter": "tid==1234",
-        "y-axis": "CPU",
-        "y-unit": "no-unit",
-        "y-data-type": "Number"
-    }
-}
-```
-
 `New Descriptor`
 
-```json
+```javascript
 OutputDescriptor { 
     "id": "custom.xy.plot.id.1",
     "name": "CPU Number Plot",
     "description": "Plots the CPU over time for given filter",
     "type": "TREE_TIME_XY",
-    "configIds" :  ["custom.xy.time.charts.instance.1"]
+    "hasActions": "true"  // for delete and modify action
     }
 ```
 
+**Questions**
+- How to delete data provider? 
+    - New data provider descriptor will have action to remove data provider. 
+- How list configuration? 
+    - Source data provider will have action to apply existing configurations on server
+    - User can use [Global configuration service](#global-configuration-service) to list configurations
+- How to export/import config
+    Use [Global configuration service](#global-configuration-service) to list configurations
 
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+#### Example: Custom Function Execution Statistics**.
 
+```mermaid
+sequenceDiagram
+    participant user as User
+    participant client as TSP Client
+    participant server as Trace Server
+    client->>server: GET /experiments/{expUUID}/outputs
+    server->>client: 200: List of Available Views
+    client->>client: Render "Available Views" view and config menu button if hasActions
+    user->>client: Click config menu beside 'Segment Store Statistics''
+    client->>server: GET /experiments/{expUUID}/outputs/{outputId}/actions {scope=view}
+    server->>client: 200: List of ActionDescriptors
+    client->>client: Render menu for each action
+    user->>client: Click on "Aggregate..."
+    client->>client: Open Dialog for ActionDescriptor
+    user->>client: Fill in 'title', 'filter' and click on 'Apply'
+    client->>server: POST experiments/{expUUID}/outputs/{outputId}/actions/{actionId} {title, filter}
+    server->>server: Validate, create data provider, persist config (experiment and global)
+    server->>client: 200: OutputDescriptor
+    client->>client: Refresh 'Available views' view
+    user->>client: User clicks on new output
+    client->>client: Customized view opens
+ ```
 
-**Example: Custom Function Execution Statistics**.
-
-```json
-ConfigurationSourceType {
-    "name": Custom Function Execution Statistics,
-    "description": Manages Custom Function Execution Statistics,
-    "id": "custom.fct.execution.stats.id",
-    "scope": "data_provider", // or self, data_provider, tree (for context sensitive menu), experiment, trace, 
-    "parameterDescriptors": [
-        {
-            "keyName": "title",
-            "description": "title of graph",
-            "dataType": "string",
-            "isRequired": "true"
-        },
-        {
-            "keyName": "aggregation",
-            "description": "Aggregate stats for functions matching regex",
-            "dataType": "string",
-            "isRequired": "optional"
-        },
-        {
-            "keyName": "filter",
-            "description": "Show stats for functions matching regex",
-            "dataType": "array",
-            "isRequired": "optional"
-        }
-    ]
-}
+```javascript
+[
+    ActionDescriptor {
+        "name": Aggregate...,
+        "description": Manages Custom Function Duration Statistics,
+        "id": "custom.fct.duration.stats.id",
+        "scope": "view", // self, view, tree, graph (location of action)
+        "parameterDescriptors": [
+            {
+                "keyName": "title",
+                "description": "title of graph",
+                "dataType": "string",
+                "isRequired": "true"
+            },
+            {
+                "keyName": "filter",
+                "description": "Aggregate stats for functions matching regex",
+                "dataType": "string",
+                "isRequired": "true"
+            }
+        ]
+    },
+    ActionDescriptor {
+        "name": Create custom view...,
+        "description": Creates a custom Function Duration Statistics view based on input regex filter to include/exclude functions.
+        "id": "custom.fct.duration.stats.id",
+        "scope": "view", // self, view, tree, graph (location of action)
+        "parameterDescriptors": [
+            {
+                "keyName": "filter",
+                "description": "Regex filter on function names.",
+                "dataType": "string",
+                "isRequired": "true"
+            }
+        ]
+]
 ```
 
-```json
+```javascript
 OutputDescriptor {
     "id": "segmentstore.latency.analysis.statistics:callstack.analysis",
     "name": "Function Execution statistics",
     "description": "Function Execution statistics",
     "type": "DATA_TREE",
-    "configSourcesIds": ["custom.fct.execution.stats.id"]
+    "hasAction": "true"  // 2 actions of above
 }
 ```
 
-`Menu in Available views view beside Function Duration Statistics`: `"Custom Function Execution Statistics..."`
-
 `User input`:
-```json
+```javascript
     {
         "title": "Grouped Stats", 
         "aggregation": "label matches COM.*"
     }
 ```
 
-```json
-Configuration {
-    "name": "Grouped Stats",
-    "description": "Custom function duration statistics aggregated by name: [COM.*]",
-    "id": "custom.fct.execution.stats.id.instance.1",
-    "sourceTypeId": "custom.fct.execution.stats.id",
-    "parameters": {
-        "title": "Grouped Stats", 
-        "aggregation": "label matches COM.*"
-    }
-}
-```
-
 `New Descriptor`
 
-```json
+```javascript
 OutputDescriptor { 
     "id": "segmentstore.latency.analysis.statistics:callstack.analysis:custom.fct.execution.stats.id.instance.1",
-    "name": "CPU Number Plot",
+    "name": "Grouped Stats",
     "description": "Custom function duration statistics aggregated by name: [COM.*]",
     "type": "DATA_TREE",
-    "configIds" :  ["custom.fct.execution.stats.id.instance.1"]
+    "hasAction": "true"  // for delete, modify actions
     }
 ```
 
+**Questions**
+- How to delete data provider? 
+    - New data provider descriptor will have action to remove data provider. 
+- How list configuration? 
+    - Source data provider will have action to apply existing configurations on server
+    - User can use [Global configuration service](#global-configuration-service) to list configurations
+- How to export/import config
+    Use [Global configuration service](#global-configuration-service) to list configurations
 
 
+#### Manage configurations
+
+Data provider may decide to persist input parameters (configuraton) in global server-wide storage that can be managed through the [Global Configuration Service](#global-configuration-service). With this configurations can be shared between experiments and users. For that data provider can return additional actions in List of Action Descriptors for applying existing configs that had been stored in the global server-wide storage. To list or delete a persisted configuration in global server-wide storage use the global configuration source endpoint described here [Global configuration service](#global-configuration-service).
 
 ### Notes
 
