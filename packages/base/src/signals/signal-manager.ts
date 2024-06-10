@@ -105,7 +105,7 @@ export class SignalManager extends EventEmitter implements SignalManager {
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    emit(event: string | symbol, ...args: any[]): boolean {
+    emit(sender: string, event: string | symbol, ...args: any[]): boolean {
         let expName = 'n/a';
         if (args[0] && args[0].name) {
             expName = args[0].name;
@@ -119,7 +119,7 @@ export class SignalManager extends EventEmitter implements SignalManager {
         if (this.currentDepth > 1) {
             this.getCaller();
         }
-        console.log(`=> [calling listeners] SignalManager[${this.managerId}, depth: ${this.currentDepth}]: Firing Event: '${ev}', trace/exp: ${expName} ` +
+        console.log(`sender[${sender}]=> [calling listeners] SignalManager[${this.managerId}, depth: ${this.currentDepth}]: Firing Event: '${ev}', trace/exp: ${expName} ` +
             `. Will call ${listeners.length} listener(s)`);
 
         listeners.forEach((listener, index) => {
@@ -147,6 +147,23 @@ export class SignalManager extends EventEmitter implements SignalManager {
         return super.on(event, listener);
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/explicit-module-boundary-types
+    off(event: string | symbol, listener: (...args: any[]) => void): this {
+        let listenerIndex = this.listeners(event).length;
+        const eventName = event.toString();
+        const caller = this.getCaller();
+        const listenerStr = listener.toString().split('=>')[1];
+        // console.log(`******************** listener.toString(): ${listenerStr}`);
+        if (listenerIndex === 0) {
+            console.log(`-> [remove listener (none)] SignalManager[${this.managerId}]#on(): Registering Listener[event='${eventName}', idx=${listenerIndex}] - caller: ${caller}`);
+        } else {
+            this.removeEventListenerRegisterer(eventName, listenerIndex, caller);
+            listenerIndex = this.listeners(event).length;
+            console.log(`-> [remove listener] SignalManager[${this.managerId}]#on(): Registering Listener[event='${eventName}', idx=${listenerIndex}] - caller: ${caller}`);
+        }
+        return super.off(event, listener);
+    }
+
     private saveEventListenerRegisterer(event: string, index: number, caller: string) {
         let listenerCallers: string[] | undefined;
         if (index === 0) {
@@ -160,6 +177,16 @@ export class SignalManager extends EventEmitter implements SignalManager {
         }
     }
 
+    private removeEventListenerRegisterer(event: string, index: number, caller: string) {
+      const listenerCallers: string[] | undefined = this.listenerRegisterersPerEvent.get(event);
+
+        if (listenerCallers) {
+            const i = listenerCallers.indexOf(caller);
+            listenerCallers.splice(i, 1);
+            this.listenerRegisterersPerEvent.set(event, listenerCallers);
+        }
+    }
+
     private getEventListenerRegisterers(event: string): string[] | undefined {
         const callers = this.listenerRegisterersPerEvent.get(event);
         if (callers) {
@@ -169,109 +196,109 @@ export class SignalManager extends EventEmitter implements SignalManager {
     }
 
     fireTraceOpenedSignal(trace: Trace): void {
-        this.emit(Signals.TRACE_OPENED, trace);
+        this.emit(this.getCaller(), Signals.TRACE_OPENED, trace);
     }
     fireTraceDeletedSignal(trace: Trace): void {
-        this.emit(Signals.TRACE_DELETED, { trace });
+        this.emit(this.getCaller(), Signals.TRACE_DELETED, { trace });
     }
     fireExperimentOpenedSignal(experiment: Experiment): void {
-        this.emit(Signals.EXPERIMENT_OPENED, experiment);
+        this.emit(this.getCaller(), Signals.EXPERIMENT_OPENED, experiment);
     }
     fireExperimentClosedSignal(experiment: Experiment): void {
-        this.emit(Signals.EXPERIMENT_CLOSED, experiment);
+        this.emit(this.getCaller(), Signals.EXPERIMENT_CLOSED, experiment);
     }
     fireExperimentDeletedSignal(experiment: Experiment): void {
-        this.emit(Signals.EXPERIMENT_DELETED, experiment);
+        this.emit(this.getCaller(), Signals.EXPERIMENT_DELETED, experiment);
     }
     fireExperimentSelectedSignal(experiment: Experiment | undefined): void {
-        this.emit(Signals.EXPERIMENT_SELECTED, experiment);
+        this.emit(this.getCaller(), Signals.EXPERIMENT_SELECTED, experiment);
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     fireRowSelectionsChanged(payload: RowSelectionsChangedSignalPayload): void {
-        this.emit(Signals.ROW_SELECTIONS_CHANGED, payload);
+        this.emit(this.getCaller(), Signals.ROW_SELECTIONS_CHANGED, payload);
     }
     fireExperimentUpdatedSignal(experiment: Experiment): void {
-        this.emit(Signals.EXPERIMENT_UPDATED, experiment);
+        this.emit(this.getCaller(), Signals.EXPERIMENT_UPDATED, experiment);
     }
     fireOpenedTracesChangedSignal(payload: OpenedTracesUpdatedSignalPayload): void {
-        this.emit(Signals.OPENED_TRACES_UPDATED, payload);
+        this.emit(this.getCaller(), Signals.OPENED_TRACES_UPDATED, payload);
     }
     fireOutputAddedSignal(payload: OutputAddedSignalPayload): void {
-        this.emit(Signals.OUTPUT_ADDED, payload);
+        this.emit(this.getCaller(), Signals.OUTPUT_ADDED, payload);
     }
     fireItemPropertiesSignalUpdated(payload: ItemPropertiesSignalPayload): void {
-        this.emit(Signals.ITEM_PROPERTIES_UPDATED, payload);
+        this.emit(this.getCaller(), Signals.ITEM_PROPERTIES_UPDATED, payload);
     }
     fireThemeChangedSignal(theme: string): void {
-        this.emit(Signals.THEME_CHANGED, theme);
+        this.emit(this.getCaller(), Signals.THEME_CHANGED, theme);
     }
     fireSelectionChangedSignal(payload: { [key: string]: string }): void {
-        this.emit(Signals.SELECTION_CHANGED, payload);
+        this.emit(this.getCaller(), Signals.SELECTION_CHANGED, payload);
     }
     fireCloseTraceViewerTabSignal(traceUUID: string): void {
-        this.emit(Signals.CLOSE_TRACEVIEWERTAB, traceUUID);
+        this.emit(this.getCaller(), Signals.CLOSE_TRACEVIEWERTAB, traceUUID);
     }
     fireTraceViewerTabActivatedSignal(experiment: Experiment): void {
-        this.emit(Signals.TRACEVIEWERTAB_ACTIVATED, experiment);
+        this.emit(this.getCaller(), Signals.TRACEVIEWERTAB_ACTIVATED, experiment);
     }
     fireUpdateZoomSignal(hasZoomedIn: boolean): void {
-        this.emit(Signals.UPDATE_ZOOM, hasZoomedIn);
+        this.emit(this.getCaller(), Signals.UPDATE_ZOOM, hasZoomedIn);
     }
     fireResetZoomSignal(): void {
-        this.emit(Signals.RESET_ZOOM);
+        this.emit(this.getCaller(), Signals.RESET_ZOOM);
     }
     fireMarkerCategoriesFetchedSignal(): void {
-        this.emit(Signals.MARKER_CATEGORIES_FETCHED);
+        this.emit(this.getCaller(), Signals.MARKER_CATEGORIES_FETCHED);
     }
     fireMarkerSetsFetchedSignal(): void {
-        this.emit(Signals.MARKERSETS_FETCHED);
+        this.emit(this.getCaller(), Signals.MARKERSETS_FETCHED);
     }
     fireMarkerCategoryClosedSignal(payload: { traceViewerId: string; markerCategory: string }): void {
-        this.emit(Signals.MARKER_CATEGORY_CLOSED, payload);
+        this.emit(this.getCaller(), Signals.MARKER_CATEGORY_CLOSED, payload);
     }
     fireTraceServerStartedSignal(): void {
-        this.emit(Signals.TRACE_SERVER_STARTED);
+        this.emit(this.getCaller(), Signals.TRACE_SERVER_STARTED);
     }
     fireUndoSignal(): void {
-        this.emit(Signals.UNDO);
+        this.emit(this.getCaller(), Signals.UNDO);
     }
     fireRedoSignal(): void {
-        this.emit(Signals.REDO);
+        this.emit(this.getCaller(), Signals.REDO);
     }
     fireOutputDataChanged(outputs: OutputDescriptor[]): void {
-        this.emit(Signals.OUTPUT_DATA_CHANGED, outputs);
+        this.emit(this.getCaller(), Signals.OUTPUT_DATA_CHANGED, outputs);
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/explicit-module-boundary-types
     firePinView(output: OutputDescriptor, payload?: any): void {
-        this.emit(Signals.PIN_VIEW, output, payload);
+        this.emit(this.getCaller(), Signals.PIN_VIEW, output, payload);
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/explicit-module-boundary-types
     fireUnPinView(output: OutputDescriptor, payload?: any): void {
-        this.emit(Signals.UNPIN_VIEW, output, payload);
+        this.emit(this.getCaller(), Signals.UNPIN_VIEW, output, payload);
     }
     fireOpenOverviewOutputSignal(traceId: string): void {
-        this.emit(Signals.OPEN_OVERVIEW_OUTPUT, traceId);
+        this.emit(this.getCaller(), Signals.OPEN_OVERVIEW_OUTPUT, traceId);
     }
     fireOverviewOutputSelectedSignal(payload: { traceId: string; outputDescriptor: OutputDescriptor }): void {
-        this.emit(Signals.OVERVIEW_OUTPUT_SELECTED, payload);
+        this.emit(this.getCaller(), Signals.OVERVIEW_OUTPUT_SELECTED, payload);
     }
     fireSaveAsCsv(payload: { traceId: string; data: string }): void {
-        this.emit(Signals.SAVE_AS_CSV, payload);
+        this.emit(this.getCaller(), Signals.SAVE_AS_CSV, payload);
     }
     fireViewRangeUpdated(payload: TimeRangeUpdatePayload): void {
-        this.emit(Signals.VIEW_RANGE_UPDATED, payload);
+        this.emit(this.getCaller(), Signals.VIEW_RANGE_UPDATED, payload);
     }
     fireSelectionRangeUpdated(payload: TimeRangeUpdatePayload): void {
-        this.emit(Signals.SELECTION_RANGE_UPDATED, payload);
+        this.emit(this.getCaller(), Signals.SELECTION_RANGE_UPDATED, payload);
     }
     fireRequestSelectionRangeChange(payload: TimeRangeUpdatePayload): void {
-        this.emit(Signals.REQUEST_SELECTION_RANGE_CHANGE, payload);
+        this.emit(this.getCaller(), Signals.REQUEST_SELECTION_RANGE_CHANGE, payload);
     }
     fireContributeContextMenu(payload: ContextMenuContributedSignalPayload): void {
-        this.emit(Signals.CONTRIBUTE_CONTEXT_MENU, payload);
+        this.emit(this.getCaller(), Signals.CONTRIBUTE_CONTEXT_MENU, payload);
     }
     fireContextMenuItemClicked(payload: ContextMenuItemClickedSignalPayload): void {
-        this.emit(Signals.CONTEXT_MENU_ITEM_CLICKED, payload);
+        this.emit(this.getCaller(), Signals.CONTEXT_MENU_ITEM_CLICKED, payload);
     }
 
     // hacky way to figure-out who registered a listener
