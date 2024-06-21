@@ -1,58 +1,58 @@
 {
-    "private": true,
-    "name": "electron-theia-trace-example-app",
-    "main": "scripts/theia-trace-main.js",
-    "version": "0.2.3",
-    "author": {
-        "name": "Trace Compass",
-        "email": "tracecompass-dev@eclipse.org"
+  "private": true,
+  "name": "electron-theia-trace-example-app",
+  "main": "scripts/theia-trace-main.js",
+  "version": "0.2.3",
+  "author": {
+    "name": "Trace Compass",
+    "email": "tracecompass-dev@eclipse.org"
+  },
+  "theia": {
+    "target": "electron",
+    "backend": {
+      "config": {
+        "startupTimeout": -1
+      }
     },
-    "theia": {
-        "target": "electron",
-        "backend": {
-            "config": {
-                "startupTimeout": -1
-            }
-        },
-        "frontend": {
-            "config": {
-                "applicationName": "Theia-Trace Example Application",
-                "preferences": {
-                    "editor.autoSave": "on",
-                    "trace-viewer.port": 8080
-                }
-            }
+    "frontend": {
+      "config": {
+        "applicationName": "Theia-Trace Example Application",
+        "preferences": {
+          "editor.autoSave": "on",
+          "trace-viewer.port": 8080
         }
-    },
-    "dependencies": {
-        "@theia/core": "1.49.1",
-        "@theia/electron": "1.49.1",
-        "@theia/navigator": "1.49.1",
-        "@theia/preferences": "1.49.1",
-        "@theia/terminal": "1.49.1",
-        "theia-traceviewer": "0.2.3"
-    },
-    "devDependencies": {
-        "@theia/cli": "1.49.1",
-        "electron": "^23.2.4",
-        "electron-builder": "~23.6.0"
-    },
-    "scripts": {
-        "prepare": "yarn build",
-        "build": "theia build --mode development",
-        "rebuild": "theia rebuild:electron --cacheRoot ../..",
-        "start": "TRACE_SERVER_PATH=../../trace-compass-server/tracecompass-server theia start",
-        "watch": "theia build --watch --mode development",
-        "clean:dist": "rimraf dist",
-        "package": "yarn clean:dist && yarn rebuild && electron-builder",
-        "package:preview": "yarn clean:dist && yarn rebuild && electron-builder --dir"
-    },
-    "engines": {
-        "yarn": ">=1.7.0 <2",
-        "node": ">=16 <19"
-    },
-    "repository": {
-        "type": "git",
-        "url": "https://github.com/eclipse-cdt-cloud/theia-trace-extension"
+      }
     }
+  },
+  "dependencies": {
+    "@theia/core": "1.50.0",
+    "@theia/electron": "1.50.0",
+    "@theia/navigator": "1.50.0",
+    "@theia/preferences": "1.50.0",
+    "@theia/terminal": "1.50.0",
+    "theia-traceviewer": "0.2.3"
+  },
+  "devDependencies": {
+    "@theia/cli": "1.50.0",
+    "electron": "^28.2.8",
+    "electron-builder": "~23.6.0"
+  },
+  "scripts": {
+    "prepare": "yarn build",
+    "build": "theia build --mode development",
+    "rebuild": "theia rebuild:electron --cacheRoot ../..",
+    "start": "TRACE_SERVER_PATH=../../trace-compass-server/tracecompass-server theia start",
+    "watch": "theia build --watch --mode development",
+    "clean:dist": "rimraf dist",
+    "package": "yarn clean:dist && yarn rebuild && electron-builder",
+    "package:preview": "yarn clean:dist && yarn rebuild && electron-builder --dir"
+  },
+  "engines": {
+    "yarn": ">=1.7.0 <2",
+    "node": ">=16 <19"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/eclipse-cdt-cloud/theia-trace-extension"
+  }
 }
